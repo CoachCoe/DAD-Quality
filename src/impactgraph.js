@@ -1,0 +1,153 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import { randomBytes } from 'node:crypto';
+import path from 'node:path';
+import { command } from './process.js';
+import { digest, RunError } from './core.js';
+
+const POSTGRES = 'postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea';
+const NGINX = 'nginx:1.30.5-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94';
+export const requiredChecks = ['snapshot', 'docker', 'build', 'database', 'api-tests', 'web-tests', 'deploy', 'staff-journey', 'cleanup'];
+
+async function freePort() {
+  const server = createServer();
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  const port = server.address().port;
+  await new Promise(resolve => server.close(resolve));
+  return port;
+}
+
+export function composeDefinition({ id, port, password, apiPassword, staffPassword }) {
+  const publicOrigin = `http://localhost:${port}`, staffOrigin = `http://staff.localhost:${port}`;
+  const common = { DONOR_PUBLIC_ORIGIN: publicOrigin, DONOR_STAFF_ORIGIN: staffOrigin, DONOR_GO_WORKERS_ENABLED: 'false' };
+  const base = { networks: ['isolated'], labels: { 'atm.run': id }, security_opt: ['no-new-privileges:true'], cap_drop: ['ALL'] };
+  return {
+    name: id,
+    services: {
+      postgres: { ...base, image: POSTGRES, environment: { POSTGRES_USER: 'atm_owner', POSTGRES_PASSWORD: password, POSTGRES_DB: 'impactgraph_atm' }, tmpfs: ['/var/lib/postgresql/data'], healthcheck: { test: ['CMD-SHELL', 'pg_isready -U atm_owner -d impactgraph_atm'], interval: '2s', timeout: '2s', retries: 30 }, cap_drop: [], security_opt: [] },
+      'test-postgres': { ...base, image: POSTGRES, environment: { POSTGRES_USER: 'atm_owner', POSTGRES_PASSWORD: password, POSTGRES_DB: 'donor_go' }, tmpfs: ['/var/lib/postgresql/data'], healthcheck: { test: ['CMD-SHELL', 'pg_isready -U atm_owner -d donor_go'], interval: '2s', timeout: '2s', retries: 30 }, cap_drop: [], security_opt: [] },
+      migrate: { ...base, image: `${id}/api:local`, command: ['migrate'], environment: { DONOR_GO_DATABASE_URL: `postgresql://atm_owner:${password}@postgres/impactgraph_atm?sslmode=disable` } },
+      api: { ...base, image: `${id}/api:local`, environment: { ...common, DONOR_API_DATABASE_URL: `postgresql://atm_api:${apiPassword}@postgres/impactgraph_atm?sslmode=disable` }, read_only: true, tmpfs: ['/tmp'], healthcheck: { test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8002/health/ready'], interval: '2s', timeout: '3s', retries: 30 } },
+      web: { ...base, image: `${id}/web:local`, environment: { ...common, DONOR_API_BASE_URL: 'http://api:8002' }, tmpfs: ['/tmp', '/app/.next/cache'] },
+      ingress: { image: NGINX, labels: { 'atm.run': id }, networks: ['isolated', 'edge'], ports: [`127.0.0.1:${port}:8080`], volumes: ['./nginx.conf:/etc/nginx/conf.d/default.conf:ro'], healthcheck: { test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/'], interval: '2s', timeout: '3s', retries: 30 } },
+      staff: { ...base, image: `${id}/api:local`, entrypoint: ['staff'], environment: { ...common, DONOR_STAFF_CLI_DATABASE_URL: `postgresql://atm_staff:${staffPassword}@postgres/impactgraph_atm?sslmode=disable` } },
+      'api-tests': { ...base, image: `${id}/api-checks:local`, environment: { TEST_DATABASE_URL: `postgresql://atm_owner:${password}@test-postgres/donor_go?sslmode=disable` }, command: ['sh', '-c', 'go vet ./... && go test -race ./...'], working_dir: '/src' },
+      'web-tests': { ...base, image: `${id}/web-checks:local`, command: ['sh', '-c', 'npm run lint -- --vcs-enabled=false && npm test -- --run && npm run typecheck'], working_dir: '/app' },
+    },
+    networks: { isolated: { internal: true }, edge: {} },
+  };
+}
+
+export class ImpactGraph {
+  constructor(run, { repo, revision = 'HEAD', signal }) {
+    this.run = run; this.repo = path.resolve(repo); this.revision = revision; this.signal = signal;
+    this.id = run.data.id; this.source = path.join(run.dir, 'source'); this.file = path.join(run.dir, 'compose.json'); this.created = false;
+  }
+  async logged(result, label, binary, args, options = {}) {
+    try {
+      const output = await command(binary, args, { signal: this.signal, ...options });
+      result.evidence.push(await this.run.evidence(`${label}.log`, output.stdout + output.stderr));
+      return output;
+    } catch (error) {
+      result.evidence.push(await this.run.evidence(`${label}.log`, (error.stdout ?? '') + (error.stderr ?? '') + '\n' + error.message));
+      throw error;
+    }
+  }
+  compose(args, options = {}) { return command('docker', ['compose', '-p', this.id, '-f', this.file, ...args], { signal: this.signal, ...options }); }
+  async snapshot(result) {
+    const { stdout } = await command('git', ['rev-parse', '--verify', `${this.revision}^{commit}`], { cwd: this.repo, signal: this.signal });
+    const revision = stdout.trim();
+    if (!/^[a-f0-9]{40,64}$/.test(revision)) throw new RunError('Invalid source revision.');
+    const tree = await command('git', ['ls-tree', '-r', '--name-only', revision], { cwd: this.repo });
+    const files = tree.stdout.trim().split('\n');
+    if (files.some(f => /(^|\/)\.env(?:\.|$)/.test(f) && !f.endsWith('.example'))) throw new RunError('Snapshot refuses tracked environment files containing potential credentials.');
+    for (const file of ['apps/donor-api/Dockerfile', 'apps/web/Dockerfile', 'apps/web/package-lock.json']) {
+      if (!files.includes(file)) throw new RunError(`ImpactGraph adapter requires ${file}.`);
+    }
+    await mkdir(this.source, { mode: 0o700 });
+    const archive = path.join(this.run.dir, 'source.tar');
+    await command('git', ['archive', '--format=tar', `--output=${archive}`, revision], { cwd: this.repo, signal: this.signal });
+    await command('tar', ['-xf', archive, '-C', this.source], { signal: this.signal });
+    const worktree = await command('git', ['status', '--porcelain'], { cwd: this.repo });
+    this.run.data.candidate = { revision, sourceArchiveSha256: digest(await readFile(archive)), source: this.repo, excludesWorkingTreeChanges: true, workingTreeDirty: Boolean(worktree.stdout.trim()) };
+    result.evidence.push(await this.run.evidence('candidate.json', JSON.stringify(this.run.data.candidate, null, 2)));
+    return { summary: `Archived committed revision ${revision.slice(0, 12)}; working tree and environment files excluded.` };
+  }
+  async docker(result) {
+    await this.logged(result, 'docker', 'docker', ['info', '--format', '{{.ServerVersion}}']);
+    await this.logged(result, 'compose-version', 'docker', ['compose', 'version']);
+    this.port = await freePort();
+    this.publicOrigin = `http://localhost:${this.port}`; this.staffOrigin = `http://staff.localhost:${this.port}`;
+    this.password = randomBytes(24).toString('hex'); this.apiPassword = randomBytes(24).toString('hex'); this.staffPassword = randomBytes(24).toString('hex');
+    const config = composeDefinition(this);
+    // Runtime credentials are private, never linked in reports. These are run-local only.
+    await writeFile(this.file, JSON.stringify(config, null, 2), { mode: 0o600 });
+    await writeFile(path.join(this.run.dir, 'nginx.conf'), `server {\n listen 8080;\n server_name _;\n location / {\n  proxy_pass http://web:3000;\n  proxy_set_header Host $http_host;\n  proxy_set_header X-Forwarded-Proto $scheme;\n  proxy_set_header X-Forwarded-For $remote_addr;\n }\n}\n`, { mode: 0o600 });
+    this.run.data.environment = { publicOrigin: this.publicOrigin, staffOrigin: this.staffOrigin, outboundNetwork: 'internal Docker network', integrations: 'Stripe, SMTP and push disabled', composeSha256: digest(JSON.stringify(config)) };
+    return { summary: 'Docker ready; unique project and loopback port allocated.' };
+  }
+  async build(result) {
+    for (const [service, file] of [['api', 'apps/donor-api/Dockerfile'], ['web', 'apps/web/Dockerfile']]) {
+      const args = ['build', '--label', `atm.run=${this.id}`, '--label', `org.opencontainers.image.revision=${this.run.data.candidate.revision}`, '-f', path.join(this.source, file)];
+      if (service === 'web') args.push('--build-arg', `DONOR_PUBLIC_ORIGIN=${this.publicOrigin}`, '--build-arg', `DONOR_STAFF_ORIGIN=${this.staffOrigin}`);
+      await this.logged(result, `build-${service}-checks`, 'docker', [...args, '--target', 'build', '-t', `${this.id}/${service}-checks:local`, this.source], { timeout: 900_000, failureStatus: 'failed' });
+      await this.logged(result, `build-${service}`, 'docker', [...args, '-t', `${this.id}/${service}:local`, this.source], { timeout: 900_000, failureStatus: 'failed' });
+    }
+    this.run.data.candidate.images = {};
+    for (const service of ['api', 'web']) {
+      const image = await command('docker', ['image', 'inspect', `${this.id}/${service}:local`, '--format', '{{.Id}}']);
+      this.run.data.candidate.images[service] = image.stdout.trim();
+    }
+    return { summary: 'Production images and test images built from the archived revision.' };
+  }
+  async sql(query) {
+    return this.compose(['exec', '-T', 'postgres', 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'atm_owner', '-d', 'impactgraph_atm', '-At'], { input: query });
+  }
+  async database(result) {
+    this.created = true;
+    await this.logged(result, 'database-start', 'docker', ['compose', '-p', this.id, '-f', this.file, 'up', '-d', '--wait', '--wait-timeout', '90', 'postgres', 'test-postgres']);
+    await this.logged(result, 'migrations', 'docker', ['compose', '-p', this.id, '-f', this.file, 'run', '--rm', '-T', 'migrate'], { failureStatus: 'failed' });
+    // Passwords are generated hexadecimal strings, never supplied by users or a model.
+    await this.sql(`CREATE USER atm_api PASSWORD '${this.apiPassword}';\nGRANT dad_api TO atm_api;\nCREATE USER atm_staff PASSWORD '${this.staffPassword}';\nGRANT dad_staff_cli TO atm_staff;\n`);
+    await this.logged(result, 'test-migrations', 'docker', ['compose', '-p', this.id, '-f', this.file, 'run', '--rm', '-T', '-e', `DONOR_GO_DATABASE_URL=postgresql://atm_owner:${this.password}@test-postgres/donor_go?sslmode=disable`, 'migrate'], { failureStatus: 'failed' });
+    return { summary: 'Disposable application and integration-test databases migrated; application processes use separate roles.' };
+  }
+  async suite(result, name) {
+    await this.logged(result, name, 'docker', ['compose', '-p', this.id, '-f', this.file, 'run', '--rm', '-T', name], { timeout: 900_000, failureStatus: 'failed' });
+    return { summary: name === 'api-tests' ? 'Go vet and race-enabled backend tests passed.' : 'Frontend lint, unit tests and type checks passed.' };
+  }
+  async deploy(result) {
+    await this.logged(result, 'deploy', 'docker', ['compose', '-p', this.id, '-f', this.file, 'up', '-d', '--wait', '--wait-timeout', '120', 'api', 'web', 'ingress'], { timeout: 180_000 });
+    const { stdout } = await this.compose(['exec', '-T', 'web', 'node', '-e', `fetch('http://127.0.0.1:3000/').then(r=>{console.log(r.status);if(r.status!==200)process.exit(1)}).catch(()=>process.exit(1))`]);
+    result.evidence.push(await this.run.evidence('readiness.log', stdout));
+    const response = await fetch(this.publicOrigin, { signal: AbortSignal.any([this.signal, AbortSignal.timeout(10_000)]), redirect: 'manual' });
+    if (response.status !== 200) throw new RunError(`Published ingress returned HTTP ${response.status}.`);
+    await response.body?.cancel();
+    return { summary: 'API database readiness and production web health passed.' };
+  }
+  async invitation() {
+    const { stdout } = await this.compose(['run', '--rm', '-T', 'staff', '--email', 'administrator@atm.invalid', '--name', 'ATM Administrator']);
+    const invitation = stdout.match(/http:\/\/\S+\/staff\/activate#token=\S+/)?.[0];
+    if (!invitation || new URL(invitation).origin !== this.staffOrigin) throw new RunError('Staff bootstrap returned no valid run-scoped invitation.');
+    return invitation;
+  }
+  async verifyStaff() {
+    const { stdout } = await this.sql(`BEGIN READ ONLY;\nSELECT json_build_object('staff', (SELECT count(*) FROM donor_staff WHERE email='administrator@atm.invalid' AND role='ADMIN' AND disabled=false), 'passkeys', (SELECT count(*) FROM donor_staff_passkeys p JOIN donor_staff s ON s.id=p.staff_id WHERE s.email='administrator@atm.invalid'), 'active_sessions', (SELECT count(*) FROM donor_staff_sessions x JOIN donor_staff s ON s.id=x.staff_id WHERE s.email='administrator@atm.invalid' AND x.revoked_at IS NULL AND x.expires_at>now()), 'revoked_sessions', (SELECT count(*) FROM donor_staff_sessions x JOIN donor_staff s ON s.id=x.staff_id WHERE s.email='administrator@atm.invalid' AND x.revoked_at IS NOT NULL));\nROLLBACK;`);
+    const value = stdout.split('\n').find(line => line.startsWith('{'));
+    if (!value) throw new RunError('Database verifier returned no result.');
+    const state = JSON.parse(value);
+    if (state.staff !== 1 || state.passkeys !== 1 || state.active_sessions < 1 || state.revoked_sessions < 1) throw new RunError('Persisted staff, passkey, or session invariants failed.', 'failed');
+    return state;
+  }
+  async cleanup(result) {
+    if (this.created) {
+      // Cleanup gets its own deadline and is not canceled with the run.
+      try {
+        const logs = await this.compose(['logs', '--no-color', '--tail', '150', 'api', 'web', 'ingress'], { signal: undefined, timeout: 20_000 });
+        result.evidence.push(await this.run.evidence('services.log', logs.stdout + logs.stderr));
+      } catch { /* Removal must still run if log collection fails. */ }
+      await this.logged(result, 'cleanup', 'docker', ['compose', '-p', this.id, '-f', this.file, 'down', '--volumes', '--remove-orphans', '--timeout', '10'], { signal: undefined, timeout: 90_000 });
+    }
+    return { summary: 'Run-owned containers and ephemeral databases removed. Images and evidence retained locally.' };
+  }
+}

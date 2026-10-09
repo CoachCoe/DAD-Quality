@@ -1,0 +1,137 @@
+const $ = selector => document.querySelector(selector);
+const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const titleCase = value => value ? value[0].toUpperCase() + value.slice(1) : '';
+const date = value => new Date(value).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const duration = ms => !Number.isFinite(ms) ? '—' : ms < 60_000 ? `${Math.round(ms / 1000)}s` : `${Math.floor(ms / 60_000)}m ${Math.round(ms % 60_000 / 1000)}s`;
+const badge = status => `<span class="badge ${escape(status)}">${escape(titleCase(status))}</span>`;
+const quote = value => `'${String(value).replaceAll("'", "'\\''")}'`;
+let state, view = 'overview', search = '', filter = 'all', selectedRun, selectedFinding, refreshing = false, previousState = '', detailFingerprint = '', toastTimer;
+
+async function api(url, options = {}) {
+  const response = await fetch(url, { ...options, headers: { 'Content-Type': 'application/json', ...(state?.csrf ? { 'X-ATM-Token': state.csrf } : {}), ...options.headers } });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error ?? 'The request could not be completed.');
+  return body;
+}
+function toast(message) { $('#toast').textContent = message; $('#toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { $('#toast').hidden = true; }, 4000); }
+function evidenceLinks(runId, entries = []) { return entries.map(e => `<a href="/evidence/${encodeURIComponent(runId)}/${encodeURIComponent(e.path.split('/').pop())}" target="_blank" rel="noopener noreferrer">${escape(e.path.replace('evidence/', ''))} ↗</a>`).join(''); }
+function activeFindings() { return state.findings.filter(f => !['resolved', 'dismissed'].includes(f.disposition)); }
+function runTable(runs) {
+  if (!runs.length) return '<div class="empty"><h2>No matching runs</h2><p>Start a validation or adjust your filters to see its checks and evidence here.</p></div>';
+  return `<div class="table-shell"><table><thead><tr><th>Validation</th><th>Commit</th><th>Status</th><th>Checks</th><th>Duration</th><th><span class="muted">View</span></th></tr></thead><tbody>${runs.map(r => `<tr><td><button class="run-link" data-run="${escape(r.id)}">${escape(date(r.startedAt))}<small>${escape(r.trigger === 'commit-watch' ? 'Commit watch' : r.trigger === 'dashboard' ? 'Manual validation' : 'Command line')}</small></button></td><td><code class="commit">${escape(r.revision.slice(0, 8))}</code></td><td>${badge(r.status)}</td><td><span class="checks">${r.passed}/${r.total}<progress max="${r.total || 1}" value="${r.passed}" aria-label="${r.passed} of ${r.total} checks passed"></progress></span></td><td class="muted">${escape(duration(r.durationMs))}</td><td><button class="row-arrow" data-run="${escape(r.id)}" aria-label="View run ${escape(r.id)}">↗</button></td></tr>`).join('')}</tbody></table></div>`;
+}
+function overview() {
+  const latest = state.runs[0], active = state.active;
+  const heroStatus = latest?.status ?? 'empty';
+  const titles = { passed: 'Latest candidate passed.', failed: 'A candidate needs attention.', inconclusive: 'More evidence is needed.', incomplete: 'A run did not finish.', canceled: 'Validation was canceled.', running: 'Validation is in progress.', empty: 'Your next release starts here.' };
+  const descriptions = { passed: 'All required local checks completed successfully. Explore the evidence behind this result.', failed: 'A required check failed. Review the results and supporting evidence before trying again.', inconclusive: 'Some checks could not complete. Review the execution details to find the next step.', incomplete: 'This run has no final result. Inspect its evidence and verify cleanup before rerunning.', canceled: 'Review the cleanup result before starting the next validation.', running: `Currently checking ${latest?.currentCheck?.replaceAll('-', ' ') ?? 'the candidate'}. Evidence is saved as each check completes.`, empty: 'Run your application through an isolated environment and see exactly what passed, what failed, and why.' };
+  const passed = state.runs.filter(r => r.status === 'passed').length;
+  return `<div class="overview-grid"><div><article class="hero ${escape(heroStatus)}"><div class="eyebrow"><span class="connection-dot"></span>LATEST VALIDATION</div><span class="status-symbol ${heroStatus === 'failed' ? 'bad' : ''}" aria-hidden="true">${heroStatus === 'passed' ? '✓' : heroStatus === 'running' ? '↻' : '◇'}</span><h2>${titles[heroStatus]}</h2><p>${escape(descriptions[heroStatus])}</p><div class="hero-bottom"><span class="mono">${latest ? `${escape(latest.revision.slice(0, 8))} · ${escape(date(latest.startedAt))}` : 'ImpactGraph · Local acceptance'}</span>${latest ? `<button class="text-button" data-run="${escape(latest.id)}">View evidence <span aria-hidden="true">↗</span></button>` : '<button class="text-button" data-action="launch">Start your first run ↗</button>'}</div></article><div class="metrics"><div class="metric"><div class="metric-label">Validation runs</div><div class="metric-number">${state.runs.length}</div><div class="metric-note">All recorded runs</div></div><div class="metric"><div class="metric-label">Passed runs</div><div class="metric-number">${passed}<span class="subtle"> / ${state.runs.length}</span></div><div class="metric-note">Required checks passed</div></div><div class="metric"><div class="metric-label">Open findings</div><div class="metric-number">${activeFindings().length}</div><div class="metric-note">Awaiting triage or resolution</div></div></div></div><div class="side-stack"><article class="panel"><div class="panel-title">Keep checking.<span class="tag">AUTOMATION</span></div><p>Validate new commits automatically, while you keep building.</p><div class="automation-state"><span class="connection-dot"></span>${state.watch.enabled ? `Watching ${escape(state.watch.revision)}` : 'Commit watch is off'}</div>${state.watch.error ? `<p class="notice error">${escape(state.watch.error)}</p>` : ''}<button class="text-button" data-action="watch">${state.watch.enabled ? 'Turn off commit watch' : 'Set up commit watch'} <span aria-hidden="true">→</span></button></article><article class="panel"><div class="panel-title">What this profile checks</div><div class="guide-row"><span class="guide-icon">✓</span><div><strong>Build & test</strong><small>API and frontend checks</small></div></div><div class="guide-row"><span class="guide-icon">⌁</span><div><strong>Real user journey</strong><small>Staff passkeys and access boundaries</small></div></div><div class="guide-row"><span class="guide-icon">◇</span><div><strong>Independent verification</strong><small>Persisted state and evidence</small></div></div></article></div></div><div class="section-top"><div><h2>Recent validations</h2><small>Committed candidates, with a record of every check.</small></div><a class="text-button" href="#runs">View all runs →</a></div>${runTable(state.runs.slice(0, 5))}${active ? `<p class="section-note">One validation is active. Cleanup completes before another can start.</p>` : ''}`;
+}
+function findingsView() {
+  const findings = state.findings.filter(f => `${f.title} ${f.check} ${f.note}`.toLowerCase().includes(search.toLowerCase()) && (filter === 'all' || (filter === 'open' ? !['resolved', 'dismissed'].includes(f.disposition) : f.disposition === filter)));
+  return `<div class="toolbar"><input id="search" aria-label="Search findings" placeholder="Search findings…" value="${escape(search)}"><select id="filter" aria-label="Filter findings">${['all', 'open', 'untriaged', 'confirmed', 'resolved', 'dismissed'].map(value => `<option value="${value}" ${filter === value ? 'selected' : ''}>${value === 'all' ? 'All findings' : titleCase(value)}</option>`).join('')}</select></div><p class="section-note">Recurring check failures are grouped here. Triage records your assessment; it never changes a run’s result.</p><div class="finding-list">${findings.length ? findings.map(f => `<article class="finding-card"><span class="finding-icon" aria-hidden="true">◇</span><div class="finding-body"><h3>${escape(f.title)}</h3><div class="finding-meta"><span class="tag">${escape(f.check)}</span><span>${f.occurrences.length} ${f.occurrences.length === 1 ? 'occurrence' : 'occurrences'}</span><span>·</span><span>${escape(titleCase(f.disposition))}</span>${f.severity !== 'unassessed' ? `<span class="tag">${escape(f.severity)}</span>` : ''}</div><p>${f.latestCheckPassed ? 'This check passed in a later run. Review before resolving.' : `Last seen ${escape(date(f.lastSeen))}`}</p></div><button class="button secondary" data-finding="${f.id}">Review ↗</button></article>`).join('') : '<div class="empty"><h2>No findings to show</h2><p>Completed check failures will appear here with evidence and reproduction details.</p></div>'}</div>`;
+}
+function runsView() {
+  const runs = state.runs.filter(r => `${r.id} ${r.revision}`.toLowerCase().includes(search.toLowerCase()) && (filter === 'all' || r.status === filter));
+  return `<div class="toolbar"><input id="search" aria-label="Search runs" placeholder="Search by commit or run ID…" value="${escape(search)}"><select id="filter" aria-label="Filter runs">${['all', 'passed', 'failed', 'running', 'inconclusive', 'canceled', 'incomplete'].map(value => `<option value="${value}" ${filter === value ? 'selected' : ''}>${value === 'all' ? 'All statuses' : titleCase(value)}</option>`).join('')}</select></div>${runTable(runs)}`;
+}
+function render() {
+  if (!state) return;
+  const focus = document.activeElement?.id, selection = focus === 'search' ? $('#search').selectionStart : null;
+  $('#project-name').textContent = state.project.name;
+  $('#nav-runs').textContent = state.runs.length; $('#nav-findings').textContent = activeFindings().length;
+  const titles = { overview: ['Release overview', `Validation history and evidence for ${state.project.name}.`], runs: ['Validation runs', 'Every candidate, every check, and the evidence behind each result.'], findings: ['Findings', 'Turn failed checks into clear next steps.'] };
+  $('#page-title').textContent = titles[view][0]; $('#page-description').textContent = titles[view][1];
+  document.querySelectorAll('[data-nav]').forEach(link => { link.classList.toggle('active', link.dataset.nav === view); if (link.dataset.nav === view) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current'); });
+  $('#new-run').disabled = Boolean(state.active || state.starting);
+  $('#new-run').textContent = state.active || state.starting ? 'Validation running…' : '＋ Run validation';
+  $('#warnings').textContent = [...state.warnings, ...(state.lastLaunchError ? [state.lastLaunchError] : [])].join(' '); $('#warnings').hidden = !$('#warnings').textContent;
+  $('#content').innerHTML = view === 'overview' ? overview() : view === 'runs' ? runsView() : findingsView();
+  $('#content').setAttribute('aria-busy', 'false');
+  if (focus === 'search' && $('#search')) { $('#search').focus(); $('#search').setSelectionRange(selection, selection); }
+}
+async function refresh() {
+  if (refreshing) return; refreshing = true;
+  try {
+    const next = await api('/api/state');
+    const encoded = JSON.stringify(next);
+    state = next;
+    $('#connection-error').hidden = true;
+    if (encoded !== previousState) { previousState = encoded; render(); }
+    if (selectedRun && $('#run-dialog').open) await showRun(selectedRun, false);
+  } catch (error) { $('#connection-error').textContent = `Runner unavailable. ${error.message} Reconnecting…`; $('#connection-error').hidden = false; }
+  finally { refreshing = false; }
+}
+function openLaunch() {
+  if (!state || state.active || state.starting) return;
+  $('#launch-error').hidden = true; $('#ai').checked = false; $('#require-ai').checked = false; $('#require-ai').disabled = true;
+  $('#ai').disabled = !state.project.aiConfigured;
+  $('#ai-help').textContent = state.project.aiConfigured ? `Uses ${state.project.model}. Limited to 12 actions and 3 minutes; model usage is billed by your provider.` : 'To enable, set OPENAI_API_KEY and ATM_MODEL on the runner and restart the dashboard.';
+  $('#launch-dialog').showModal(); $('#revision').focus();
+}
+async function showRun(id, open = true) {
+  try {
+    const data = await api(`/api/runs/${id}`);
+    const fingerprint = JSON.stringify(data) + JSON.stringify(state.active);
+    if (!open && selectedRun === id && detailFingerprint === fingerprint) return;
+    selectedRun = id; detailFingerprint = fingerprint;
+    const { run, summary, comparison, integrity } = data;
+    const active = state.active?.id === id;
+    const openChecks = [...document.querySelectorAll('#run-detail details[open]')].map(element => element.dataset.check);
+    $('#run-detail').innerHTML = `<div class="dialog-top"><div><div class="eyebrow">VALIDATION EVIDENCE</div><h2 id="run-title">${escape(date(run.startedAt))}</h2></div><button class="icon-button close-dialog" aria-label="Close run details">×</button></div><div class="detail-meta">${badge(summary.status)}<code class="commit">${escape(summary.revision.slice(0, 12))}</code><small>${escape(duration(summary.durationMs))} · ${escape(summary.trigger)}</small></div><div class="detail-grid"><section aria-label="Checks">${run.results.map(r => `<details class="check-row" data-check="${escape(r.id)}" ${openChecks.includes(r.id) || r.status !== 'passed' ? 'open' : ''}><summary><span>${escape(r.id)}${r.required ? '' : ' · advisory'}</span>${badge(!r.finishedAt && active ? 'running' : r.status)}</summary><p>${escape(!r.finishedAt && active ? 'Check in progress. Evidence appears when the check completes.' : r.summary)}</p><div class="evidence-links">${evidenceLinks(id, r.evidence)}</div></details>`).join('') || '<p>Preparing the candidate…</p>'}</section><aside class="detail-aside"><h3>Evidence integrity</h3><div class="integrity ${integrity.status}">${integrity.status === 'verified' ? '✓ Recorded evidence hashes match' : 'Evidence needs attention'}</div>${integrity.issues.map(issue => `<p>${escape(issue)}</p>`).join('')}<hr><h3>Compared with previous run</h3>${comparison ? `<p>${escape(comparison.revision?.slice(0, 8) ?? 'Unresolved revision')}</p>${comparison.changes.length ? comparison.changes.map(c => `<div class="change"><strong>${escape(c.check)}</strong>${escape(c.before)} <span class="arrow">→</span> ${escape(c.after)}</div>`).join('') : '<p>No check status changes.</p>'}${comparison.removed.length ? `<p>Not present: ${escape(comparison.removed.join(', '))}</p>` : ''}<button class="text-button" data-run="${escape(comparison.baselineId)}">View previous run →</button>` : '<p>This is the first comparable run.</p>'}<hr><h3>Acceptance scope</h3><p>Local build, tests, staff journey, and cleanup. This result does not authorize production promotion.</p></aside></div><div class="dialog-actions">${active ? `<button class="button secondary" data-cancel="${escape(id)}" ${state.active.cancelRequested ? 'disabled' : ''}>${state.active.cancelRequested ? 'Canceling & cleaning up…' : 'Cancel validation'}</button>` : `<button class="button secondary" data-rerun="${escape(summary.revision)}" ${state.active ? 'disabled' : ''}>Run this revision again</button>`}<button class="button primary close-dialog">Done</button></div>`;
+    if (open && !$('#run-dialog').open) $('#run-dialog').showModal();
+  } catch (error) { toast(error.message); }
+}
+function reproduction(finding) {
+  const occurrence = finding.occurrences.at(-1);
+  return `npm run atm -- run --repo ${quote(state.project.repo)} --revision ${quote(occurrence.revision ?? 'HEAD')}`;
+}
+function showFinding(id) {
+  const finding = state.findings.find(f => f.id === id); if (!finding) return;
+  selectedFinding = id;
+  const occurrence = finding.occurrences.at(-1);
+  $('#finding-detail').innerHTML = `<form id="triage-form"><div class="dialog-top"><div><div class="eyebrow">FINDING · ${escape(finding.check)}</div><h2 id="finding-title">Review a check failure</h2></div><button type="button" class="icon-button close-dialog" aria-label="Close finding">×</button></div><p>${escape(finding.title)}</p><div class="finding-meta"><span>${finding.occurrences.length} ${finding.occurrences.length === 1 ? 'occurrence' : 'occurrences'}</span><span>·</span><span>First seen ${escape(date(finding.firstSeen))}</span></div>${finding.latestCheckPassed ? '<div class="notice">This check passed in a later run. Confirm the underlying issue is resolved before closing it.</div>' : ''}<div class="triage-grid"><div><label for="disposition">Triage status</label><select id="disposition">${['untriaged', 'confirmed', 'resolved', 'dismissed'].map(v => `<option ${finding.disposition === v ? 'selected' : ''} value="${v}">${titleCase(v)}</option>`).join('')}</select></div><div><label for="severity">Severity</label><select id="severity">${['unassessed', 'low', 'medium', 'high', 'critical'].map(v => `<option ${finding.severity === v ? 'selected' : ''} value="${v}">${titleCase(v)}</option>`).join('')}</select></div></div><label for="triage-note">Assessment</label><textarea id="triage-note" maxlength="2000" placeholder="What happened, and what should happen next?">${escape(finding.note)}</textarea><small>A reason is required to resolve or dismiss. Triage does not override a failed check.</small><hr><h3>Reproduce this candidate</h3><pre class="repro">${escape(reproduction(finding))}</pre><button type="button" class="text-button" data-action="copy-repro">Copy command</button><h3>Latest evidence</h3><div class="evidence-links">${evidenceLinks(occurrence.runId, occurrence.evidence)}</div><p><button type="button" class="text-button" data-run="${escape(occurrence.runId)}">Open originating run ↗</button></p>${finding.audit.length ? `<details><summary>Assessment history (${finding.audit.length})</summary>${[...finding.audit].reverse().map(entry => `<div class="audit-entry"><strong>${escape(titleCase(entry.disposition))}</strong> · ${escape(entry.severity)} · ${escape(date(entry.updatedAt))}<p>${escape(entry.note)}</p></div>`).join('')}</details>` : ''}<div id="triage-error" class="notice error" role="alert" hidden></div><div class="dialog-actions"><button type="button" class="button secondary" data-action="export-finding">Download finding</button><button type="submit" class="button primary">Save assessment</button></div></form>`;
+  if (!$('#finding-dialog').open) $('#finding-dialog').showModal();
+}
+document.addEventListener('click', async event => {
+  const button = event.target.closest('button'); if (!button) return;
+  if (button.classList.contains('close-dialog')) { button.closest('dialog').close(); return; }
+  if (button.id === 'new-run' || button.dataset.action === 'launch') openLaunch();
+  if (button.dataset.run) await showRun(button.dataset.run);
+  if (button.dataset.finding) showFinding(button.dataset.finding);
+  if (button.dataset.rerun) { $('#run-dialog').close(); openLaunch(); $('#revision').value = button.dataset.rerun; }
+  if (button.dataset.cancel) { try { button.disabled = true; await api(`/api/runs/${button.dataset.cancel}/cancel`, { method: 'POST', body: '{}' }); toast('Cancellation requested. Cleanup will finish before another run starts.'); await refresh(); } catch (error) { toast(error.message); button.disabled = false; } }
+  if (button.dataset.action === 'watch') {
+    if (state.watch.enabled) { try { await api('/api/watch', { method: 'PATCH', body: JSON.stringify({ enabled: false }) }); await refresh(); } catch (error) { toast(error.message); } }
+    else { $('#watch-error').hidden = true; $('#watch-revision').value = state.watch.revision; $('#watch-dialog').showModal(); }
+  }
+  if (button.dataset.action === 'copy-repro') { try { await navigator.clipboard.writeText(reproduction(state.findings.find(f => f.id === selectedFinding))); toast('Reproduction command copied.'); } catch { toast('Copy the command from the text above.'); } }
+  if (button.dataset.action === 'export-finding') {
+    const finding = state.findings.find(f => f.id === selectedFinding);
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ ...finding, reproduction: reproduction(finding) }, null, 2)], { type: 'application/json' }));
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = `atm-finding-${finding.id}.json`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+});
+document.addEventListener('input', event => { if (event.target.id === 'search') { search = event.target.value; render(); } });
+document.addEventListener('change', event => { if (event.target.id === 'filter') { filter = event.target.value; render(); } if (event.target.id === 'ai') { $('#require-ai').disabled = !$('#ai').checked; if (!$('#ai').checked) $('#require-ai').checked = false; } });
+$('#launch-form').addEventListener('submit', async event => {
+  event.preventDefault(); $('#launch-submit').disabled = true; $('#launch-error').hidden = true;
+  try { const run = await api('/api/runs', { method: 'POST', body: JSON.stringify({ revision: $('#revision').value.trim(), ai: $('#ai').checked, requireAI: $('#require-ai').checked }) }); $('#launch-dialog').close(); await refresh(); await showRun(run.id); toast('Validation started.'); }
+  catch (error) { $('#launch-error').textContent = error.message; $('#launch-error').hidden = false; }
+  finally { $('#launch-submit').disabled = false; }
+});
+$('#watch-form').addEventListener('submit', async event => {
+  event.preventDefault(); const button = event.submitter; button.disabled = true;
+  try { await api('/api/watch', { method: 'PATCH', body: JSON.stringify({ enabled: true, revision: $('#watch-revision').value.trim() }) }); $('#watch-dialog').close(); await refresh(); toast('Watching for the next committed revision.'); }
+  catch (error) { $('#watch-error').textContent = error.message; $('#watch-error').hidden = false; }
+  finally { button.disabled = false; }
+});
+document.addEventListener('submit', async event => {
+  if (event.target.id !== 'triage-form') return; event.preventDefault(); event.submitter.disabled = true;
+  try { await api(`/api/findings/${selectedFinding}`, { method: 'PATCH', body: JSON.stringify({ disposition: $('#disposition').value, severity: $('#severity').value, note: $('#triage-note').value }) }); $('#finding-dialog').close(); await refresh(); toast('Assessment saved. Original run evidence is unchanged.'); }
+  catch (error) { $('#triage-error').textContent = error.message; $('#triage-error').hidden = false; event.submitter.disabled = false; }
+});
+function navigate() { const target = location.hash.slice(1); view = ['overview', 'runs', 'findings'].includes(target) ? target : 'overview'; search = ''; filter = 'all'; render(); }
+window.addEventListener('hashchange', navigate);
+navigate(); await refresh(); setInterval(refresh, 2500);

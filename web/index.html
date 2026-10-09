@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#193c36">
+  <meta name="description" content="ATM application quality workspace. Inspect validation runs, evidence, and findings.">
+  <title>ATM · Quality workspace</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <aside class="sidebar">
+    <a class="brand" href="#overview" aria-label="ATM overview"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>atm<span class="brand-dot">.</span></a>
+    <div class="workspace-label">QUALITY WORKSPACE</div>
+    <nav aria-label="Main navigation">
+      <a href="#overview" data-nav="overview"><span aria-hidden="true">◫</span>Overview</a>
+      <a href="#runs" data-nav="runs"><span aria-hidden="true">≋</span>Validation runs <span class="nav-count" id="nav-runs">0</span></a>
+      <a href="#findings" data-nav="findings"><span aria-hidden="true">◇</span>Findings <span class="nav-count" id="nav-findings">0</span></a>
+    </nav>
+    <div class="sidebar-bottom"><span class="connection-dot"></span><span>Local runner connected</span><small>Private workspace · v0.2</small></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar"><div><span class="muted">Workspace</span><span class="slash">/</span><strong id="project-name">ImpactGraph</strong></div><span class="environment"><span class="connection-dot"></span>Local environment</span></header>
+    <main id="main" tabindex="-1">
+      <div id="connection-error" class="notice error" role="alert" hidden></div>
+      <div id="warnings" class="notice" hidden></div>
+      <section class="page-heading"><div><div class="eyebrow">APPLICATION QUALITY</div><h1 id="page-title">Release overview</h1><p id="page-description">Validation history and evidence for your application.</p></div><button id="new-run" class="button primary"><span aria-hidden="true">＋</span> Run validation</button></section>
+      <div id="content" aria-busy="true"><div class="loading">Loading your workspace…</div></div>
+      <footer class="page-footer"><span>Evidence before confidence.</span><span>Local acceptance checks · Production promotion is not configured.</span></footer>
+    </main>
+  </div>
+  <dialog id="launch-dialog" aria-labelledby="launch-title">
+    <form id="launch-form">
+      <div class="dialog-top"><div><div class="eyebrow">NEW VALIDATION</div><h2 id="launch-title">Test a candidate</h2></div><button type="button" class="icon-button close-dialog" aria-label="Close new validation">×</button></div>
+      <p>Build an isolated environment from a committed revision, run the checks, and collect the evidence.</p>
+      <label for="revision">Commit, branch, or tag</label><input id="revision" name="revision" value="HEAD" maxlength="200" required autocomplete="off" spellcheck="false"><small>Resolved to an exact commit before the run starts. Working tree changes are excluded.</small>
+      <div class="option-box"><label class="check-label"><input id="ai" type="checkbox"> Include AI exploration <span class="tag">ADVISORY</span></label><p id="ai-help">Uses the model configured on this runner.</p><label class="check-label"><input id="require-ai" type="checkbox" disabled> Require AI exploration to pass</label></div>
+      <div id="launch-error" role="alert" class="notice error" hidden></div>
+      <div class="dialog-actions"><button type="button" class="button secondary close-dialog">Cancel</button><button id="launch-submit" class="button primary" type="submit">Start validation <span aria-hidden="true">↗</span></button></div>
+    </form>
+  </dialog>
+  <dialog id="run-dialog" class="wide-dialog" aria-labelledby="run-title"><div id="run-detail"></div></dialog>
+  <dialog id="finding-dialog" aria-labelledby="finding-title"><div id="finding-detail"></div></dialog>
+  <dialog id="watch-dialog" aria-labelledby="watch-title"><form id="watch-form"><div class="dialog-top"><div><div class="eyebrow">AUTOMATION</div><h2 id="watch-title">Watch for new commits</h2></div><button type="button" class="icon-button close-dialog" aria-label="Close automation">×</button></div><p>While this dashboard is running, validate the next committed revision of a local branch. Checks run one candidate at a time.</p><label for="watch-revision">Local branch or ref</label><input id="watch-revision" value="HEAD" required maxlength="200" autocomplete="off"><small>No commits are fetched. The current revision becomes the starting point; only subsequent changes trigger a run. Automated runs use deterministic checks.</small><div id="watch-error" role="alert" class="notice error" hidden></div><div class="dialog-actions"><button type="button" class="button secondary close-dialog">Cancel</button><button type="submit" class="button primary">Enable commit watch</button></div></form></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>
