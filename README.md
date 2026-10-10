@@ -114,7 +114,7 @@ Application runtime containers share an internal Docker network. Only a fixed-ta
 
 This is intended for **trusted application source with synthetic data**. Docker builds and dependency lifecycle scripts execute repository code. Browser request interception is an additional guard, not an OS-level browser sandbox or a guarantee against malicious application code. Use dedicated isolated execution hosts before supporting untrusted repositories or applications.
 
-Text logs redact common credentials. Browser traces can contain synthetic one-use invitations and session cookies; treat all run directories as private. Files are created with restrictive permissions, and `.atm/` is ignored by Git. Reports are not uploaded anywhere. Do not publish raw traces. Evidence is hashed for comparison, not signed or tamper-proof.
+Text logs redact common credentials. Browser traces can contain synthetic one-use invitations and session cookies; treat all run directories as private. Files are created with restrictive permissions, and `.atm/` is ignored by Git. Local runs do not upload reports. The optional [GitHub gate](docs/github-gate.md) uploads encrypted evidence and persists a finding ledger before its final acceptance check can pass. Do not publish raw traces. Evidence is hashed for comparison, not signed or tamper-proof.
 
 Ctrl-C and SIGTERM trigger cleanup. SIGKILL, host failure, or an unavailable Docker daemon can interrupt cleanup. The report records cleanup failure. For a run you own, recover with:
 

@@ -38,8 +38,10 @@ export function composeDefinition({ id, port, password, apiPassword, staffPasswo
 }
 
 export class ImpactGraph {
-  constructor(run, { repo, revision = 'HEAD', signal }) {
+  constructor(run, { repo, revision = 'HEAD', sourceIdentity, signal }) {
     this.run = run; this.repo = path.resolve(repo); this.revision = revision; this.signal = signal;
+    if (sourceIdentity && !/^github:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(sourceIdentity)) throw new Error('Invalid GitHub source identity.');
+    this.sourceIdentity = sourceIdentity;
     this.id = run.data.id; this.source = path.join(run.dir, 'source'); this.file = path.join(run.dir, 'compose.json'); this.created = false;
   }
   async logged(result, label, binary, args, options = {}) {
@@ -68,7 +70,7 @@ export class ImpactGraph {
     await command('git', ['archive', '--format=tar', `--output=${archive}`, revision], { cwd: this.repo, signal: this.signal });
     await command('tar', ['-xf', archive, '-C', this.source], { signal: this.signal });
     const worktree = await command('git', ['status', '--porcelain'], { cwd: this.repo, signal: this.signal });
-    this.run.data.candidate = { revision, sourceArchiveSha256: digest(await readFile(archive)), source: this.repo, excludesWorkingTreeChanges: true, workingTreeDirty: Boolean(worktree.stdout.trim()) };
+    this.run.data.candidate = { revision, sourceArchiveSha256: digest(await readFile(archive)), source: this.sourceIdentity ?? this.repo, excludesWorkingTreeChanges: true, workingTreeDirty: Boolean(worktree.stdout.trim()) };
     result.evidence.push(await this.run.evidence('candidate.json', JSON.stringify(this.run.data.candidate, null, 2)));
     return { summary: `Archived committed revision ${revision.slice(0, 12)}; working tree and environment files excluded.` };
   }

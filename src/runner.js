@@ -6,14 +6,14 @@ import { publicAgent } from './agent.js';
 import { loadPolicy } from './policy.js';
 import { assessRelease } from './release.js';
 
-export async function executeRun({ repo, revision = 'HEAD', output = '.atm/runs', policy: policyFile, ai = false, requireAI = false, model, signal = new AbortController().signal, trigger = 'cli', onCreated = () => {} }) {
+export async function executeRun({ repo, revision = 'HEAD', sourceIdentity, output = '.atm/runs', policy: policyFile, ai = false, requireAI = false, model, signal = new AbortController().signal, trigger = 'cli', onCreated = () => {} }) {
   const policy = await loadPolicy(policyFile, { ai, requireAI });
   const checks = policy.definition.checks;
   const required = checks.filter(c => c.required).map(c => c.id);
   const run = await Run.create(output, { adapter: 'impactgraph', revision, ai: checks.some(c => c.id === 'ai-public-journey'), model, trigger }, required, policy);
   onCreated(run);
   console.log(`Evidence: ${run.dir}`);
-  const adapter = new ImpactGraph(run, { repo, revision, signal });
+  const adapter = new ImpactGraph(run, { repo, revision, sourceIdentity, signal });
   const step = async (id, action) => {
     const check = checks.find(c => c.id === id);
     if (!check) return true;

@@ -32,7 +32,7 @@ export function evaluateRelease(run, { evidenceIssues = [], findings = [], input
   return { status: unique.length ? 'blocked' : 'eligible', eligible: unique.length === 0, scope: 'local-acceptance', productionAuthorized: false, policyDigest: run.policy?.digest ?? null, findingsDigest: hashPolicy(relevant), findings: relevant, reasons: unique };
 }
 
-export async function assessRelease(root, run) {
+export async function assessRelease(root, run, { directory = path.join(root, run.id) } = {}) {
   const { runs, warnings } = await listRuns(root);
   let triage = {};
   const inputIssues = [...warnings];
@@ -45,6 +45,6 @@ export async function assessRelease(root, run) {
     triage = saved.triage;
   } catch (error) { if (error.code !== 'ENOENT') inputIssues.push('Finding assessments are unreadable or invalid.'); }
   const findings = await collectFindings(root, runs, triage);
-  const evidenceIssues = await verifyEvidence(path.join(root, run.id), run);
+  const evidenceIssues = await verifyEvidence(directory, run);
   return evaluateRelease(run, { evidenceIssues, findings, inputIssues });
 }

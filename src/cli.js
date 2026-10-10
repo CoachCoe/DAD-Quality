@@ -36,7 +36,8 @@ export async function main(args = process.argv.slice(2)) {
     const run = JSON.parse(await readFile(positionals[1], 'utf8'));
     const issues = await verifyEvidence(path.dirname(path.resolve(positionals[1])), run);
     const decision = issues.length ? { status: 'inconclusive', eligible: false, reasons: issues } : run.canceledAt ? { status: 'canceled', eligible: false, reasons: ['Run canceled.'] } : evaluate(run.required, run.results);
-    const release = await assessRelease(path.dirname(path.dirname(path.resolve(positionals[1]))), run);
+    const directory = path.dirname(path.resolve(positionals[1]));
+    const release = await assessRelease(path.dirname(directory), run, { directory });
     console.log(JSON.stringify({ id: run.id, candidate: run.candidate, decision, release, recordedRelease: run.release ?? null, evidenceIntegrity: issues.length ? 'invalid' : 'verified' }, null, 2));
     return issues.length ? 2 : exitCode(decision, release);
   }

@@ -132,8 +132,9 @@ export async function donorClaimJourney(adapter, result) {
     verification.afterClaim = await adapter.verifyDonor();
     await page.screenshot({ path: path.join(adapter.run.dir, 'evidence/donor-profile.png'), fullPage: true });
     result.evidence.push(await adapter.run.reference('evidence/donor-profile.png'));
-    await page.getByRole('button', { name: 'Sign out of this device', exact: true }).click();
-    await page.getByRole('link', { name: 'Sign in to manage your profile', exact: true }).waitFor();
+    await page.goto(`${adapter.publicOrigin}/account/giving`);
+    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+    await page.getByRole('link', { name: 'Sign in to view your giving', exact: true }).waitFor();
     await expectStatus(page, `${adapter.publicOrigin}/api/donor/me/dashboard`, 401);
     verification.afterLogout = await adapter.verifyDonor({ signedOut: true });
     await session.context.clearCookies();
