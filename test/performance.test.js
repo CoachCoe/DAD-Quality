@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { measurePerformance, metrics, comparePerformance, readPerformance, performanceDetail } from '../src/performance.js';
 import { defaultPerformanceProfile, validatePerformanceProfile } from '../src/performance-config.js';
-import { loadPolicy, validatePolicy } from '../src/policy.js';
+import { loadPolicy, validatePolicy, hashPolicy } from '../src/policy.js';
 import { collectFindings } from '../src/history.js';
 import { Run } from '../src/core.js';
 import { evaluateRelease } from '../src/release.js';
@@ -118,9 +118,15 @@ test('advisory failures stay visible without producing blocking findings; requir
   await run.finish();
   let findings = await collectFindings(root, [run.data]);
   assert.equal(findings.length, 0); assert.equal(evaluateRelease(run.data, { findings }).eligible, true);
-  run.data.required.push('performance');
+  const check = run.data.policy.definition.checks.find(c => c.id === 'performance');
+  check.required = true; check.profile.criteria.maxP95Ms = 50; check.profile.criteria.maxErrorRate = 0;
+  run.data.required = run.data.policy.definition.checks.filter(c => c.required).map(c => c.id);
+  run.data.policy.digest = hashPolicy({ definition: run.data.policy.definition, scenarios: run.data.policy.scenarios });
   findings = await collectFindings(root, [run.data]);
-  assert.equal(findings.length, 1); assert.equal(evaluateRelease(run.data, { findings }).eligible, false);
+  const release = evaluateRelease(run.data, { findings });
+  assert.equal(findings.length, 1); assert.equal(release.eligible, false);
+  assert.ok(release.reasons.includes('performance: Synthetic budget exceeded'));
+  assert.ok(!release.reasons.some(r => r.startsWith('Policy unavailable')));
 });
 
 test('dashboard loads only verified performance evidence and matching history', async t => {

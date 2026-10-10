@@ -1,0 +1,19 @@
+{
+  "status": "needs-reproduction",
+  "repository": "CoachCoe/ImpactGraph",
+  "candidate": "b41853e03e895be8da2e5a5dff615bdbdb6e3a45",
+  "test": "TestInterruptedSeedLeavesNoMailToSend",
+  "source": "apps/donor-api/cmd/seed/main_test.go:177",
+  "evidence": "https://github.com/CoachCoe/ImpactGraph/actions/runs/38015374506/attempts/1",
+  "observed": "The canceled seed returned a PostgreSQL socket write i/o timeout; errors.Is(err, context.Canceled) was false.",
+  "expected": "Cancellation is recognized, then the test verifies queued seed mail was suppressed.",
+  "scope": "Discovered in existing API CI while a PR changed only the ATM runner pin. Two complete local ATM runs of the same application source passed.",
+  "hypothesis": "Cancellation may surface through a driver transport error rather than wrapping context.Canceled. This is an inference, not a confirmed root cause.",
+  "impact": "The failing invocation stopped before checking mail suppression. No conclusion about suppression correctness follows from this failure alone.",
+  "followUp": [
+    "Reproduce repeated race-enabled seed cancellation against a disposable database.",
+    "Observe ctx.Err() alongside the returned driver error and verify cleanup invariants even if error identity differs.",
+    "Preserve unexpected real database errors while making cancellation assertions deterministic."
+  ],
+  "diagnosticRerun": "The unchanged API job passed on attempt 2 (3m37s). The independent ATM GitHub run also passed its race-enabled API suite. The intermittent failure remains unresolved."
+}
