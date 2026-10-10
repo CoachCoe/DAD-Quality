@@ -7,6 +7,7 @@ import { listRuns, collectFindings } from './history.js';
 // Pure decision: identical candidate, policy, evidence and finding inputs yield
 // an identical assessment. It deliberately does not read a clock or trust a saved verdict.
 export function evaluateRelease(run, { evidenceIssues = [], findings = [], inputIssues = [] } = {}) {
+  if (run.options?.mode === 'exploration' || run.policy?.definition?.scope === 'exploration') return { status: 'not-applicable', eligible: false, scope: 'exploration', productionAuthorized: false, reasons: ['Discovery reports observations and hypotheses; it does not assess release readiness.', ...policyIssues(run), ...evidenceIssues, ...inputIssues] };
   const reasons = [...policyIssues(run), ...inputIssues, ...evidenceIssues];
   const outcome = evaluate(run.required, run.results);
   if (!run.finishedAt) reasons.push('Run is incomplete.');
@@ -24,7 +25,7 @@ export function evaluateRelease(run, { evidenceIssues = [], findings = [], input
       }
     }
   }
-  const relevant = findings.filter(f => f.source === run.candidate?.source).map(f => ({ id: f.id, severity: f.severity, disposition: f.disposition, updatedAt: f.updatedAt ?? null, lastSeen: f.lastSeen })).sort((a, b) => a.id.localeCompare(b.id));
+  const relevant = findings.filter(f => f.source === run.candidate?.source && (f.check !== 'discovery' || ['confirmed', 'reopened'].includes(f.disposition))).map(f => ({ id: f.id, severity: f.severity, disposition: f.disposition, updatedAt: f.updatedAt ?? null, lastSeen: f.lastSeen })).sort((a, b) => a.id.localeCompare(b.id));
   for (const finding of relevant) {
     if (!['resolved', 'dismissed'].includes(finding.disposition) && (definition?.findings?.blockingSeverities ?? ['unassessed', 'high', 'critical']).includes(finding.severity)) reasons.push(`Unresolved ${finding.severity} finding: ${finding.id}`);
   }

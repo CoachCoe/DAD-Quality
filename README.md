@@ -2,6 +2,14 @@
 
 ATM is a local quality workspace for ImpactGraph. Launch isolated acceptance runs, compare candidates, inspect evidence, and triage recurring failures through a browser dashboard or CLI.
 
+**Autonomous discovery:** use **Explore application** in the dashboard or
+`npm run explore -- --repo /path/to/ImpactGraph --revision origin/dev`. The agent
+discovers capabilities and chooses its own investigations, without a predefined
+goal or test sequence. It records hypotheses, attempts independent reproduction,
+and remembers earlier discoveries. This mode skips predefined test suites.
+See [discovery setup, evidence, and limits](docs/discovery.md); a configured model
+and API key are required. Discovery is separate from release acceptance.
+
 ## Open the workspace
 
 ```sh
@@ -141,6 +149,7 @@ API implementation references: [OpenAI function calling](https://developers.open
 
 ## Next increments
 
+- Validate live-model discovery quality on ImpactGraph, then expand staff identity support, independent data assertions, and clean-fixture replay of mutations.
 - Expand deployed acceptance scenarios: role-specific staff permissions, referral attribution, recurring gifts, worker recovery.
 - Add sandbox Stripe and captured-email services with explicit egress rules.
 - Adapt the existing full Playwright suite to deployed targets and ingest structured suite results.

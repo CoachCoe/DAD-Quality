@@ -5,11 +5,13 @@ import { pathToFileURL } from 'node:url';
 import { readFile } from 'node:fs/promises';
 import { evaluate, redact, verifyEvidence } from './core.js';
 import { executeRun } from './runner.js';
+import { executeDiscovery } from './discovery-runner.js';
 import { assessRelease } from './release.js';
 
 const help = `ATM — local application quality runner
 
   npm run atm -- run --repo /path/to/ImpactGraph [--revision HEAD] [--ai --model MODEL]
+  npm run atm -- explore --repo /path/to/ImpactGraph --model MODEL
   npm run atm -- inspect /path/to/run/run.json
   npm start -- --repo /path/to/ImpactGraph
 
@@ -24,6 +26,8 @@ Runs committed source only. Docker and a Playwright Chromium installation are re
 Runtime services use an internal network; payments, mail, and push are disabled.
 Exit codes: 0 locally eligible; 1 check failure; 2 inconclusive/invalid evidence; 3 acceptance blocked; 130 canceled.
 This local profile does not authorize production release.
+Explore discovers its own investigations, with no predefined suites or release verdict.
+Discovery budget: 40 model requests, 10 minutes, 100,000 accounted tokens (may overshoot by the last response).
 `;
 
 export async function main(args = process.argv.slice(2)) {
@@ -39,9 +43,11 @@ export async function main(args = process.argv.slice(2)) {
     const directory = path.dirname(path.resolve(positionals[1]));
     const release = await assessRelease(path.dirname(directory), run, { directory });
     console.log(JSON.stringify({ id: run.id, candidate: run.candidate, decision, release, recordedRelease: run.release ?? null, evidenceIntegrity: issues.length ? 'invalid' : 'verified' }, null, 2));
-    return issues.length ? 2 : exitCode(decision, release);
+    return issues.length ? 2 : run.options?.mode === 'exploration' ? explorationExit(decision) : exitCode(decision, release);
   }
-  if (positionals[0] !== 'run' || positionals.length !== 1 || !values.repo) throw new Error('Use: npm run atm -- run --repo /path/to/ImpactGraph');
+  if (!['run', 'explore'].includes(positionals[0]) || positionals.length !== 1 || !values.repo) throw new Error('Use: npm run atm -- run|explore --repo /path/to/ImpactGraph');
+  const discovery = positionals[0] === 'explore';
+  if (discovery && (values.ai || values['require-ai'] || values.policy)) throw new Error('Explore uses its own discovery contract; omit --ai, --require-ai and --policy.');
   const ai = values.ai || values['require-ai'];
   const model = values.model ?? process.env.ATM_MODEL;
   const controller = new AbortController();
@@ -49,13 +55,15 @@ export async function main(args = process.argv.slice(2)) {
   process.on('SIGINT', cancel); process.on('SIGTERM', cancel);
   let run;
   try {
-    run = await executeRun({ repo: values.repo, revision: values.revision, output: values.output, policy: values.policy, ai, requireAI: values['require-ai'], model, signal: controller.signal });
+    run = await (discovery ? executeDiscovery : executeRun)({ repo: values.repo, revision: values.revision, output: values.output, policy: values.policy, ai, requireAI: values['require-ai'], model, signal: controller.signal });
   } finally {
     process.off('SIGINT', cancel); process.off('SIGTERM', cancel);
   }
   if (controller.signal.aborted) return 130;
-  return exitCode(run.data.decision, run.data.release);
+  return discovery ? explorationExit(run.data.decision) : exitCode(run.data.decision, run.data.release);
 }
+
+const explorationExit = decision => ({ passed: 0, failed: 1, inconclusive: 2, canceled: 130 })[decision.status] ?? 2;
 
 export function exitCode(decision, release) {
   return decision.status === 'passed' ? release.eligible ? 0 : 3 : ({ failed: 1, inconclusive: 2, canceled: 130 }[decision.status] ?? 2);

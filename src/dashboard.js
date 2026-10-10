@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { atomicJSON, now, redact, verifyEvidence } from './core.js';
 import { command } from './process.js';
 import { executeRun } from './runner.js';
+import { executeDiscovery } from './discovery-runner.js';
+import { discoveryDetail } from './discovery-report.js';
 import { listRuns, readRun, summarize, compareRuns, collectFindings } from './history.js';
 import { performanceDetail } from './performance.js';
 import { assessRelease } from './release.js';
@@ -37,9 +39,9 @@ async function jsonBody(request) {
 }
 
 export class Dashboard {
-  constructor({ repo, root = '.atm/runs', executor = executeRun, resolve = resolveRevision, model = process.env.ATM_MODEL, policy }) {
+  constructor({ repo, root = '.atm/runs', executor = executeRun, explorer = executeDiscovery, resolve = resolveRevision, model = process.env.ATM_MODEL, policy }) {
     this.repo = path.resolve(repo); this.root = path.resolve(root); this.model = model;
-    this.executor = executor; this.resolve = resolve;
+    this.executor = executor; this.explorer = explorer; this.resolve = resolve;
     this.policyFile = policy;
     this.active = null; this.state = { watch: { enabled: false, revision: 'HEAD', lastRevision: null }, triage: {} };
     this.control = path.join(this.root, '.dashboard'); this.mutations = Promise.resolve(); this.starting = false; this.closing = false;
@@ -79,7 +81,7 @@ export class Dashboard {
     const baseline = runs.find(r => r.id !== run.id && r.startedAt < run.startedAt && r.finishedAt && r.candidate?.source === run.candidate?.source && r.options?.adapter === run.options?.adapter);
     const issues = await verifyEvidence(path.join(this.root, run.id), run);
     const release = await assessRelease(this.root, run);
-    return { run, release, performance: await performanceDetail(this.root, run, runs), summary: summarize(run, this.active?.id), comparison: compareRuns(run, baseline), integrity: { status: issues.length ? 'invalid' : 'verified', issues } };
+    return { run, release, discovery: await discoveryDetail(this.root, run), performance: await performanceDetail(this.root, run, runs), summary: summarize(run, this.active?.id), comparison: compareRuns(run, baseline), integrity: { status: issues.length ? 'invalid' : 'verified', issues } };
   }
   async snapshot() {
     const { runs, warnings } = await this.history();
@@ -90,10 +92,12 @@ export class Dashboard {
       active: this.active ? { id: this.active.id, revision: this.active.revision, cancelRequested: this.active.controller.signal.aborted } : null,
       starting: this.starting, watch: this.state.watch, lastLaunchError: this.lastLaunchError ?? null };
   }
-  async start({ revision = 'HEAD', ai = false, requireAI = false, trigger = 'dashboard' } = {}) {
+  async start({ revision = 'HEAD', ai = false, requireAI = false, mode = 'validation', trigger = 'dashboard' } = {}) {
     if (this.closing || this.active || this.starting) throw new HttpError(409, 'A validation is already active. Wait for cleanup before starting another.');
     if (typeof ai !== 'boolean' || typeof requireAI !== 'boolean') throw new HttpError(400, 'Invalid AI options.');
-    if ((ai || requireAI) && (!process.env.OPENAI_API_KEY || !this.model)) throw new HttpError(400, 'Configure OPENAI_API_KEY and ATM_MODEL on the dashboard process first.');
+    if (!['validation', 'exploration'].includes(mode)) throw new HttpError(400, 'Invalid run mode.');
+    if (mode === 'exploration' && (ai || requireAI)) throw new HttpError(400, 'Discovery does not use predefined AI journeys.');
+    if ((ai || requireAI || mode === 'exploration') && (!process.env.OPENAI_API_KEY || !this.model)) throw new HttpError(400, 'Configure OPENAI_API_KEY and ATM_MODEL on the dashboard process first.');
     this.starting = true;
     try {
       const sha = await this.resolve(this.repo, revision);
@@ -104,7 +108,7 @@ export class Dashboard {
       this.lastLaunchError = null;
       let created;
       const ready = new Promise(resolve => { created = resolve; });
-      active.completion = Promise.resolve().then(() => this.executor({ repo: this.repo, revision: sha, output: this.root, policy: this.policyFile, ai, requireAI, model: this.model, trigger, signal: controller.signal, onCreated: run => { active.id = run.data.id; created(); } }))
+      active.completion = Promise.resolve().then(() => (mode === 'exploration' ? this.explorer : this.executor)({ repo: this.repo, revision: sha, output: this.root, policy: this.policyFile, ai, requireAI, model: this.model, trigger, signal: controller.signal, onCreated: run => { active.id = run.data.id; created(); } }))
         .catch(error => { this.lastLaunchError = redact(error.message); })
         .finally(() => { if (this.active === active) this.active = null; created(); });
       await ready;
@@ -144,6 +148,7 @@ export class Dashboard {
     if (!findings.some(f => f.id === id)) throw new HttpError(404, 'Finding not found.');
     if (!['untriaged', 'confirmed', 'resolved', 'dismissed'].includes(patch.disposition) || !['unassessed', 'low', 'medium', 'high', 'critical'].includes(patch.severity) || typeof patch.note !== 'string' || patch.note.length > 2000) throw new HttpError(400, 'Invalid triage fields.');
     if (['resolved', 'dismissed'].includes(patch.disposition) && !patch.note.trim()) throw new HttpError(400, 'Add a reason before resolving or dismissing a finding.');
+    if (findings.find(f => f.id === id).check === 'discovery' && patch.disposition === 'confirmed' && !patch.note.trim()) throw new HttpError(400, 'Explain why the expected behavior is correct before confirming an agent hypothesis.');
     return this.mutate(() => {
       const previous = this.state.triage[id];
       const entry = { disposition: patch.disposition, severity: patch.severity, note: redact(patch.note.trim()), updatedAt: now() };

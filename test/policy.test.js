@@ -135,3 +135,12 @@ test('corrupt finding state fails closed instead of silently forgetting blockers
   const result = await assessRelease(root, run.data);
   assert.equal(result.eligible, false); assert.match(result.reasons.join('\n'), /Finding assessments/);
 });
+
+test('agent hypotheses need human confirmation before affecting an otherwise eligible candidate', async t => {
+  const { run } = await fixture(t);
+  const hypothesis = { id: 'hypothesis', source: run.data.candidate.source, check: 'discovery', severity: 'high', disposition: 'untriaged', lastSeen: run.data.startedAt };
+  assert.equal(evaluateRelease(run.data, { findings: [hypothesis] }).eligible, true);
+  assert.equal(evaluateRelease(run.data, { findings: [{ ...hypothesis, disposition: 'confirmed' }] }).eligible, false);
+  assert.equal(evaluateRelease(run.data, { findings: [{ ...hypothesis, disposition: 'resolved' }] }).eligible, true);
+  assert.equal(evaluateRelease(run.data, { findings: [{ ...hypothesis, check: 'api-tests' }] }).eligible, false);
+});

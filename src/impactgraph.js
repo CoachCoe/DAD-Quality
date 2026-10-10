@@ -92,7 +92,7 @@ export class ImpactGraph {
     for (const [service, file] of [['api', 'apps/donor-api/Dockerfile'], ['web', 'apps/web/Dockerfile']]) {
       const args = ['build', '--label', `atm.run=${this.id}`, '--label', `org.opencontainers.image.revision=${this.run.data.candidate.revision}`, '-f', path.join(this.source, file)];
       if (service === 'web') args.push('--build-arg', `DONOR_PUBLIC_ORIGIN=${this.publicOrigin}`, '--build-arg', `DONOR_STAFF_ORIGIN=${this.staffOrigin}`);
-      await this.logged(result, `build-${service}-checks`, 'docker', [...args, '--target', 'build', '-t', `${this.id}/${service}-checks:local`, this.source], { timeout: 900_000, failureStatus: 'failed' });
+      if (this.run.data.options.mode !== 'exploration') await this.logged(result, `build-${service}-checks`, 'docker', [...args, '--target', 'build', '-t', `${this.id}/${service}-checks:local`, this.source], { timeout: 900_000, failureStatus: 'failed' });
       await this.logged(result, `build-${service}`, 'docker', [...args, '-t', `${this.id}/${service}:local`, this.source], { timeout: 900_000, failureStatus: 'failed' });
     }
     this.run.data.candidate.images = {};
@@ -100,19 +100,20 @@ export class ImpactGraph {
       const image = await command('docker', ['image', 'inspect', `${this.id}/${service}:local`, '--format', '{{.Id}}'], { signal: this.signal });
       this.run.data.candidate.images[service] = image.stdout.trim();
     }
-    return { summary: 'Production images and test images built from the archived revision.' };
+    return { summary: 'Application images built from the archived revision.' };
   }
   async sql(query) {
     return this.compose(['exec', '-T', 'postgres', 'psql', '-X', '-v', 'ON_ERROR_STOP=1', '-U', 'atm_owner', '-d', 'impactgraph_atm', '-At'], { input: query });
   }
   async database(result) {
     this.created = true;
-    await this.logged(result, 'database-start', 'docker', ['compose', '-p', this.id, '-f', this.file, 'up', '-d', '--wait', '--wait-timeout', '90', 'postgres', 'test-postgres']);
+    await this.logged(result, 'database-start', 'docker', ['compose', '-p', this.id, '-f', this.file, 'up', '-d', '--wait', '--wait-timeout', '90', 'postgres', ...(this.run.data.options.mode === 'exploration' ? [] : ['test-postgres'])]);
     await this.logged(result, 'migrations', 'docker', ['compose', '-p', this.id, '-f', this.file, 'run', '--rm', '-T', 'migrate'], { failureStatus: 'failed' });
     // Passwords are generated hexadecimal strings, never supplied by users or a model.
     await this.sql(`CREATE USER atm_api PASSWORD '${this.apiPassword}';\nGRANT dad_api TO atm_api;\nCREATE USER atm_staff PASSWORD '${this.staffPassword}';\nGRANT dad_staff_cli TO atm_staff;\n`);
-    await this.logged(result, 'test-migrations', 'docker', ['compose', '-p', this.id, '-f', this.file, 'run', '--rm', '-T', '-e', `DONOR_GO_DATABASE_URL=postgresql://atm_owner:${this.password}@test-postgres/donor_go?sslmode=disable`, 'migrate'], { failureStatus: 'failed' });
-    return { summary: 'Disposable application and integration-test databases migrated; application processes use separate roles.' };
+    if (this.run.data.options.mode !== 'exploration') await this.logged(result, 'test-migrations', 'docker', ['compose', '-p', this.id, '-f', this.file, 'run', '--rm', '-T', '-e', `DONOR_GO_DATABASE_URL=postgresql://atm_owner:${this.password}@test-postgres/donor_go?sslmode=disable`, 'migrate'], { failureStatus: 'failed' });
+    else result.evidence.push(await this.run.evidence('test-migrations.log', 'Not applicable: exploration uses only the application database.'));
+    return { summary: this.run.data.options.mode === 'exploration' ? 'Disposable application database migrated; application processes use separate roles.' : 'Disposable application and integration-test databases migrated; application processes use separate roles.' };
   }
   async suite(result, name) {
     await this.logged(result, name, 'docker', ['compose', '-p', this.id, '-f', this.file, 'run', '--rm', '-T', name], { timeout: 900_000, failureStatus: 'failed' });
@@ -170,6 +171,23 @@ ROLLBACK;`);
     const state = JSON.parse(value);
     if (state.claimed !== 1 || state.consumed_links !== 2 || state.sessions !== 1 || state.active_sessions !== (signedOut ? 0 : 1) || state.revoked_sessions !== (signedOut ? 1 : 0) || state.other_claimed !== 0 || state.other_sessions !== 0) throw new RunError('Persisted donor claim, link, or session invariants failed.', 'failed');
     return state;
+  }
+  async discoveryFixture() {
+    const actors = [{ id: 'guest', description: 'Anonymous visitor', entry: '/' }];
+    const statements = ['BEGIN;'];
+    for (const [index, label] of ['a', 'b'].entries()) {
+      const donor = randomUUID(), checkout = randomUUID(), token = randomBytes(32).toString('base64url');
+      const amount = (index + 1) * 1700;
+      statements.push(`INSERT INTO donors(id,email,claimed_at) VALUES ('${donor}','explorer-${label}@atm.invalid',now());
+INSERT INTO donor_sessions(id,donor_id,token_hash,expires_at) VALUES ('${randomUUID()}','${donor}','${digest(token)}',now()+interval '1 hour');
+INSERT INTO donor_checkouts(id,donor_id,amount_minor,frequency) VALUES ('${checkout}','${donor}',${amount},'ONE_TIME');
+INSERT INTO donor_gifts(id,donor_id,checkout_id,stripe_object_id,amount_minor,currency,frequency,paid_at) VALUES ('${randomUUID()}','${donor}','${checkout}','atm_explorer_${donor}',${amount},'USD','ONE_TIME',now());
+INSERT INTO donor_metric_projections(id,donor_id,net_minor,computed_at,next_refresh_at) VALUES ('${randomUUID()}','${donor}',${amount},now(),now()+interval '1 day');`);
+      actors.push({ id: `donor-${label}`, description: `Claimed synthetic donor explorer-${label}@atm.invalid; one USD ${(amount / 100).toFixed(2)} gift`, entry: '/account/dashboard', cookie: token });
+    }
+    statements.push('COMMIT;');
+    await this.sql(statements.join('\n'));
+    return actors;
   }
   async performanceFixture() {
     // Separate from the authentication journeys; no email or payment processor.

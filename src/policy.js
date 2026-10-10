@@ -13,6 +13,7 @@ export const evidenceRequirements = {
   'donor-claim-journey': ['donor-verification.json', 'donor-trace.zip'],
   'ai-public-journey': ['agent-events.json', 'agent-final.png'], cleanup: ['cleanup.log'],
   performance: ['performance.json'],
+  discovery: ['discovery.json', 'discovery-trace.zip'],
 };
 export function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
@@ -25,7 +26,8 @@ function fields(value, allowed) {
 }
 export function validatePolicy(policy) {
   fields(policy, ['schemaVersion', 'id', 'version', 'adapter', 'scope', 'checks', 'findings', 'exceptions']);
-  if (policy.schemaVersion !== 1 || !/^[a-z0-9-]{1,80}$/.test(policy.id ?? '') || !/^\d+\.\d+\.\d+$/.test(policy.version ?? '') || policy.adapter !== 'impactgraph' || policy.scope !== 'local-acceptance') throw new Error('Unsupported policy identity, version, adapter or scope.');
+  if (policy.schemaVersion !== 1 || !/^[a-z0-9-]{1,80}$/.test(policy.id ?? '') || !/^\d+\.\d+\.\d+$/.test(policy.version ?? '') || policy.adapter !== 'impactgraph' || !['local-acceptance', 'exploration'].includes(policy.scope)) throw new Error('Unsupported policy identity, version, adapter or scope.');
+  const exploration = policy.scope === 'exploration';
   if (!Array.isArray(policy.checks) || !policy.checks.length || new Set(policy.checks.map(c => c?.id)).size !== policy.checks.length) throw new Error('Policy checks must be nonempty and unique.');
   for (const check of policy.checks) {
     fields(check, ['id', 'required', 'timeoutMs', 'evidence', 'scenario', 'profile']);
@@ -44,10 +46,12 @@ export function validatePolicy(policy) {
     } else if (check.scenario) throw new Error('Only implemented journeys may reference scenarios.');
     if (check.id === 'cleanup' && check.timeoutMs < 110_000) throw new Error('Cleanup requires at least 110 seconds for bounded log collection and removal.');
   }
-  for (const id of ['snapshot', 'docker', 'build', 'database', 'api-tests', 'web-tests', 'deploy', 'cleanup']) {
+  for (const id of exploration ? ['snapshot', 'docker', 'build', 'database', 'deploy', 'discovery', 'cleanup'] : ['snapshot', 'docker', 'build', 'database', 'api-tests', 'web-tests', 'deploy', 'cleanup']) {
     if (!policy.checks.some(c => c.id === id && c.required)) throw new Error(`Required foundation check missing: ${id}`);
   }
-  if (!policy.checks.some(c => c.scenario && c.required && c.id !== 'ai-public-journey')) throw new Error('At least one deterministic journey must be required.');
+  if (!exploration && !policy.checks.some(c => c.scenario && c.required && c.id !== 'ai-public-journey')) throw new Error('At least one deterministic journey must be required.');
+  if (exploration && policy.checks.some(c => !['snapshot', 'docker', 'build', 'database', 'deploy', 'discovery', 'cleanup'].includes(c.id))) throw new Error('Exploration does not execute predefined suites.');
+  if (!exploration && policy.checks.some(c => c.id === 'discovery')) throw new Error('Discovery requires an exploration policy.');
   fields(policy.findings, ['blockingSeverities']);
   const levels = policy.findings.blockingSeverities;
   if (!Array.isArray(levels) || !levels.includes('critical') || !levels.includes('unassessed') || new Set(levels).size !== levels.length || levels.some(s => !['unassessed', 'low', 'medium', 'high', 'critical'].includes(s))) throw new Error('Invalid blocking severities; critical and unassessed findings must block.');

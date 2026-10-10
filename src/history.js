@@ -1,6 +1,7 @@
 import { readdir, readFile, lstat } from 'node:fs/promises';
 import path from 'node:path';
 import { digest, evaluate, redact } from './core.js';
+import { readDiscovery } from './discovery-report.js';
 
 export const RUN_ID = /^atm-\d{14}-[a-f0-9]{8}$/;
 const statuses = new Set(['passed', 'failed', 'inconclusive', 'canceled']);
@@ -37,6 +38,7 @@ export function summarize(run, activeId) {
     passed: run.results.filter(r => run.required.includes(r.id) && r.status === 'passed' && r.finishedAt).length,
     total: run.required.length, trigger: run.options?.trigger ?? 'cli',
     currentCheck: run.results.find(r => !r.finishedAt && r.startedAt)?.id,
+    mode: run.options?.mode ?? 'validation',
     durationMs: Math.max(0, Date.parse(run.finishedAt ?? new Date().toISOString()) - Date.parse(run.startedAt)),
   };
 }
@@ -71,6 +73,22 @@ export async function collectFindings(root, runs, triage = {}) {
   // Only completed checks produce findings; in-progress results start inconclusive.
   for (const run of [...runs].reverse()) {
     for (const result of run.results) {
+      if (result.id === 'discovery') {
+        try {
+          const report = await readDiscovery(root, run);
+          for (const item of report?.findings ?? []) {
+            const id = digest(`${run.candidate?.source}\ndiscovery\n${item.id}`).slice(0, 24);
+            const finding = groups.get(id) ?? { id, source: run.candidate?.source, check: 'discovery', title: item.title, kind: 'Agent hypothesis', firstSeen: run.startedAt, occurrences: [], severity: 'unassessed', disposition: 'untriaged', note: '', audit: [] };
+            Object.assign(finding, { lastSeen: run.startedAt, lastRunId: run.id, discovery: item });
+            finding.occurrences.push({ runId: run.id, revision: run.candidate?.revision, status: item.status, summary: item.basis, evidence: result.evidence });
+            groups.set(id, finding);
+          }
+        } catch { /* Invalid reports are surfaced by run detail/integrity, never trusted as findings. */ }
+        continue;
+      }
+      // Infrastructure failures in an exploration are execution diagnostics, not
+      // automatically discovered product defects or acceptance blockers.
+      if (run.options?.mode === 'exploration') continue;
       // Advisory performance is measurement only, including execution issues.
       // It must not indirectly become a blocker via unassessed findings.
       if (result.id === 'performance' && !run.required.includes('performance')) continue;
@@ -106,7 +124,7 @@ export async function collectFindings(root, runs, triage = {}) {
     const lastRun = runs.find(r => r.id === finding.lastRunId);
     const later = runs.filter(r => r.startedAt > finding.lastSeen && r.candidate?.source === lastRun?.candidate?.source && r.finishedAt && statuses.has(r.decision.status));
     const latestComparable = later.find(r => r.results.some(c => c.id === finding.check && c.finishedAt));
-    finding.latestCheckPassed = latestComparable?.results.find(c => c.id === finding.check)?.status === 'passed';
+    finding.latestCheckPassed = finding.check !== 'discovery' && latestComparable?.results.find(c => c.id === finding.check)?.status === 'passed';
   }
   return [...groups.values()].sort((a, b) => b.lastSeen.localeCompare(a.lastSeen));
 }

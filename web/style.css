@@ -21,3 +21,4 @@ dialog{border:1px solid #dbe1d4;border-radius:12px;box-shadow:0 30px 100px #102c
 .performance-scroll table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
 .performance-scroll caption { text-align: left; white-space: normal; margin-bottom: 10px; }
 .performance-scroll th, .performance-scroll td { padding: 10px 8px; text-align: left; border-bottom: 1px solid #d9dfd6; }
+.launch-buttons{display:flex;gap:10px;flex-wrap:wrap}.discovery-finding{border-top:1px solid #d6dee7;padding:12px 0}.performance-panel code{overflow-wrap:anywhere}.performance-panel li{margin:8px 0}.performance-panel details{margin:12px 0}
