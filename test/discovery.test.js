@@ -37,8 +37,13 @@ test('invalid decisions, cancellation and resource exhaustion retain partial inv
   await discover({ provider: async () => ({ action: action('reload'), tokens: 100001 }), browser: fakeBrowser(), report, signal });
   assert.equal(report.status, 'budget-exhausted'); assert.equal(report.events.length, 0);
   report = blank();
+  let calls = 0;
+  await discover({ provider: async () => { calls++; return { action: action('reload'), tokens: 100000 }; }, browser: fakeBrowser(), report, signal });
+  assert.equal(report.status, 'budget-exhausted'); assert.equal(calls, 1);
+  report = blank();
   await discover({ provider: async () => { throw new Error('Provider unavailable'); }, browser: fakeBrowser(), report, signal });
   assert.equal(report.status, 'inconclusive'); assert.equal(report.observations.length, 1);
+  assert.equal(report.requests, 1);
   report = blank();
   await discover({ provider: async () => assert.fail(), browser: fakeBrowser(), report, signal: AbortSignal.abort() });
   assert.equal(report.status, 'canceled');
@@ -107,4 +112,23 @@ test('verified memory crosses runs only within a repository; hypotheses remain r
   await writeFile(path.join(run.dir, 'evidence/discovery.json'), '{}');
   assert.equal((await discoveryMemory(root, [run.data], { source: '/app' })).warnings.length, 1);
   assert.equal((await collectFindings(root, [run.data])).length, 0);
+});
+
+test('changed screenshots invalidate discovery findings and carried memory even when report JSON is intact', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'atm-discovery-evidence-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const run = await Run.create(root, { mode: 'exploration' }, ['discovery'], discoveryPolicy());
+  run.data.candidate = { source: '/app', revision: 'a'.repeat(40) };
+  const report = { ...blank(), version: 1, runId: run.data.id, ...run.data.candidate, status: 'completed', findings: [{ id: 'finding', title: 'Unexpected text', basis: 'Observed UI', status: 'observed' }] };
+  await run.step('discovery', async result => {
+    result.evidence.push(await run.evidence('discovery.json', JSON.stringify(report)));
+    result.evidence.push(await run.evidence('discovery-o1.png', 'Synthetic screenshot'));
+  });
+  await run.finish();
+  assert.equal((await collectFindings(root, [run.data])).length, 1);
+  await writeFile(path.join(run.dir, 'evidence/discovery-o1.png'), 'Replaced screenshot');
+  await assert.rejects(readDiscovery(root, run.data), /supporting evidence is invalid/);
+  assert.equal((await collectFindings(root, [run.data])).length, 0);
+  const carried = await discoveryMemory(root, [run.data], run.data.candidate);
+  assert.equal(carried.memory.length, 0); assert.equal(carried.warnings.length, 1);
 });

@@ -4,15 +4,16 @@ import { discoveryLimits, evaluateExpectation } from './discovery.js';
 import { redact } from './core.js';
 
 const clean = value => redact(String(value)).slice(0, 12_000);
+// Evaluated in the page for both observation and execution. Inputs often have
+// no textContent, so labels, names and destinations are part of their identity.
+const controlIdentity = el => JSON.stringify([el.tagName, el.getAttribute('type'), el.getAttribute('role'), el.getAttribute('aria-label'), el.getAttribute('name'), el.getAttribute('id'), el.getAttribute('placeholder'), el.getAttribute('href'), [...(el.labels ?? [])].map(label => label.textContent?.trim()), el.textContent?.trim().slice(0, 120)]);
 export async function openDiscoveryBrowser({ origin, actors, signal, run, result }) {
   const permitted = new URL(origin);
   if (permitted.protocol !== 'http:' || !['localhost', '127.0.0.1'].includes(permitted.hostname) || !permitted.port || permitted.pathname !== '/' || permitted.username || permitted.password) throw new Error('Discovery requires a run-owned loopback origin.');
-  const session = await openBrowser([origin], { signal });
-  session.context.setDefaultTimeout(5000);
-  await session.context.tracing.start({ screenshots: true, snapshots: true, sources: false });
-  const page = await session.newPage();
+  let session, page, segment = 0;
+  const blocked = [];
   const known = new Map();
-  let controls = new Map(), actor = actors[0], trail = [], dirty = false, sequence = 0;
+  let controls = new Map(), actor = actors[0], trail = [], dirty = false, sequence = 0, lastObservation;
   let serverErrors = [], pageErrors = [];
   const relative = raw => { const u = new URL(raw, origin); return clean(`${u.pathname}${u.search}${u.hash}`); };
   const capture = (target, errors) => {
@@ -20,9 +21,20 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
     target.on('pageerror', error => { if (errors.page.length < 20) errors.page.push(clean(error.message).slice(0, 600)); });
   };
   const errors = { server: serverErrors, page: pageErrors };
-  capture(page, errors);
-  page.on('request', request => { if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) dirty = true; });
   const resetErrors = () => { errors.server = serverErrors = []; errors.page = pageErrors = []; };
+  const closeSession = async () => {
+    const previous = session;
+    session = null;
+    if (!previous) return;
+    blocked.push(...previous.blocked);
+    try {
+      if (run) {
+        const name = segment === 1 ? 'discovery-trace.zip' : `discovery-trace-${segment}.zip`;
+        await previous.context.tracing.stop({ path: path.join(run.dir, 'evidence', name) });
+        result.evidence.push(await run.reference(`evidence/${name}`));
+      }
+    } finally { await previous.close(); }
+  };
   const recordURL = (raw, title = '') => {
     let url;
     try { url = new URL(raw, origin); } catch { return; }
@@ -44,12 +56,27 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
     await target.waitForTimeout(300);
   };
   const start = async who => {
-    actor = who; trail = []; resetErrors();
-    await bootstrap(session.context, actor);
-    await page.goto(new URL(actor.entry ?? '/', origin).href, { timeout: 10000 });
-    await settle(page);
+    await closeSession();
+    actor = who; trail = []; controls.clear(); resetErrors();
+    // A new context also isolates IndexedDB, Cache Storage and browser caches.
+    // Clearing cookies/localStorage alone can manufacture cross-user findings.
+    session = await openBrowser([origin], { signal });
+    segment++;
+    try {
+      session.context.setDefaultTimeout(5000);
+      await session.context.tracing.start({ screenshots: true, snapshots: true, sources: false });
+      page = await session.newPage();
+      capture(page, errors);
+      page.on('request', request => { if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) dirty = true; });
+      await bootstrap(session.context, actor);
+      await page.goto(new URL(actor.entry ?? '/', origin).href, { timeout: 10000 });
+      await settle(page);
+    } catch (error) {
+      try { await closeSession(); } catch { /* Preserve the startup error. */ }
+      throw error;
+    }
   };
-  try { await start(actor); } catch (error) { await session.close(); throw error; }
+  await start(actor);
 
   async function evidence(target, who, currentErrors, save = false) {
     const rawText = await target.locator('body').innerText({ timeout: 5000 });
@@ -68,7 +95,7 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
     if (spec.action === 'reload') { await target.reload({ timeout: 10000 }); return; }
     const locator = target.locator(spec.selector);
     if (await locator.count() !== 1 || !await locator.isVisible()) throw new Error('Observed control is no longer uniquely visible. Observe again.');
-    const identity = await locator.evaluate(el => `${el.tagName}|${el.getAttribute('type') ?? ''}|${el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 120) ?? ''}`);
+    const identity = await locator.evaluate(controlIdentity);
     if (identity !== spec.identity) throw new Error('Observed control changed; replay/action stopped.');
     if (spec.action === 'click') await locator.click({ timeout: 5000 });
     else if (spec.action === 'fill') await locator.fill(spec.value, { timeout: 5000 });
@@ -79,7 +106,7 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
     } else throw new Error('Unsupported browser action.');
   };
   return {
-    pages: () => [...known.values()].map(({ url: _url, ...item }) => item),
+    pages: () => structuredClone([...known.values()].map(({ url: _url, ...item }) => item)),
     async observe() {
       signal.throwIfAborted();
       const current = recordURL(page.url(), await page.title());
@@ -98,9 +125,10 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
             parts.unshift(`${current.tagName.toLowerCase()}:nth-of-type(${siblings.indexOf(current) + 1})`);
             current = current.parentElement;
           }
-          return { selector: parts.join(' > '), identity: `${el.tagName}|${el.getAttribute('type') ?? ''}|${el.getAttribute('aria-label') ?? el.textContent?.trim().slice(0, 120) ?? ''}`, tag: el.tagName.toLowerCase(), type: el.getAttribute('type') ?? '', label: (el.getAttribute('aria-label') || el.labels?.[0]?.innerText || el.innerText || el.getAttribute('placeholder') || el.getAttribute('name') || '').slice(0, 180), value: el.type === 'password' ? '[hidden]' : String(el.value ?? '').slice(0, 300), href: el.tagName === 'A' ? el.href : null, newWindow: el.tagName === 'A' && el.target && el.target !== '_self', options: el.tagName === 'SELECT' ? [...el.options].slice(0, 20).map(o => o.label) : undefined };
+          return { selector: parts.join(' > '), tag: el.tagName.toLowerCase(), type: el.getAttribute('type') ?? '', label: (el.getAttribute('aria-label') || el.labels?.[0]?.innerText || el.innerText || el.getAttribute('placeholder') || el.getAttribute('name') || '').slice(0, 180), value: el.type === 'password' ? '[hidden]' : String(el.value ?? '').slice(0, 300), href: el.tagName === 'A' ? el.href : null, newWindow: el.tagName === 'A' && el.target && el.target !== '_self', options: el.tagName === 'SELECT' ? [...el.options].slice(0, 20).map(o => o.label) : undefined };
         });
         if (info.newWindow || info.type === 'password' || info.type === 'file') continue;
+        info.identity = await handle.evaluate(controlIdentity);
         const id = `c${visible.length + 1}`;
         controls.set(id, info);
         const link = info.href ? recordURL(info.href, info.label) : null;
@@ -109,6 +137,7 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
       observation.controls = visible;
       observation.actors = actors.map(({ id, description }) => ({ id, description }));
       observation.pages = this.pages();
+      lastObservation = structuredClone(observation);
       return observation;
     },
     async act(action) {
@@ -116,9 +145,6 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
       if (action.action === 'switch_actor') {
         const who = actors.find(a => a.id === action.target);
         if (!who) throw new Error('Unknown actor.');
-        // Storage, not just cookies, is isolated between actors.
-        await page.goto(origin, { timeout: 10000 });
-        await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
         await start(who); return;
       }
       let spec = { action: action.action, value: action.value };
@@ -139,18 +165,19 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
       await perform(page, spec);
       await settle(page);
     },
-    async reproduce(action) {
+    async reproduce(action, original = lastObservation) {
       const steps = structuredClone(trail);
-      const expectedPath = relative(page.url());
-      const originalErrors = structuredClone(errors);
+      const expectedPath = original?.path;
+      const originalErrors = { server: original?.serverErrors ?? [], page: original?.pageErrors ?? [] };
       const base = { actor: actor.id, entry: actor.entry ?? '/', steps, status: 'inconclusive' };
+      if (!original || original.actor !== actor.id) return { ...base, reason: 'No matching original observation; mismatch is not verified.' };
       if (dirty) return { ...base, reason: 'Application received a mutation. Automatic replay requires a pristine fixture and is deferred; no mutation was repeated.' };
       if (steps.length > discoveryLimits.replayActions) return { ...base, reason: 'Replay action budget exceeded.' };
       const replay = await openBrowser([origin], { readOnly: true, signal });
-      const target = await replay.newPage();
       const replayErrors = { server: [], page: [] };
-      capture(target, replayErrors);
       try {
+        const target = await replay.newPage();
+        capture(target, replayErrors);
         await bootstrap(replay.context, actor);
         await target.goto(new URL(actor.entry ?? '/', origin).href, { timeout: 10000 });
         await settle(target);
@@ -168,14 +195,7 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
       } catch (error) { return { ...base, reason: clean(error.message).slice(0, 600) }; }
       finally { await replay.close(); }
     },
-    async close() {
-      try {
-        if (run) {
-          await session.context.tracing.stop({ path: path.join(run.dir, 'evidence/discovery-trace.zip') });
-          result.evidence.push(await run.reference('evidence/discovery-trace.zip'));
-        }
-      } finally { await session.close(); }
-    },
-    blocked: session.blocked,
+    close: closeSession,
+    get blocked() { return [...blocked, ...(session?.blocked ?? [])]; },
   };
 }

@@ -1,6 +1,6 @@
 import { readFile, lstat } from 'node:fs/promises';
 import path from 'node:path';
-import { digest } from './core.js';
+import { digest, verifyEvidence } from './core.js';
 
 export async function readDiscovery(root, run) {
   const check = run.results.find(r => r.id === 'discovery');
@@ -14,6 +14,8 @@ export async function readDiscovery(root, run) {
   if (!info.isFile() || info.size > 8_000_000) throw new Error('Invalid discovery evidence file.');
   const bytes = await readFile(file);
   if (digest(bytes) !== items[0].sha256 || bytes.length !== items[0].bytes) throw new Error('Discovery evidence changed.');
+  const issues = await verifyEvidence(path.join(root, run.id), { results: [check] });
+  if (issues.length) throw new Error(`Discovery supporting evidence is invalid: ${issues.join('; ')}`);
   const report = JSON.parse(bytes);
   if (report.version !== 1 || report.runId !== run.id || report.revision !== run.candidate?.revision || report.source !== run.candidate?.source || !['running', 'completed', 'budget-exhausted', 'inconclusive', 'canceled'].includes(report.status)) throw new Error('Invalid discovery report identity.');
   for (const field of ['findings', 'investigations', 'observations', 'events', 'pages', 'memory']) if (!Array.isArray(report[field])) throw new Error('Invalid discovery report structure.');

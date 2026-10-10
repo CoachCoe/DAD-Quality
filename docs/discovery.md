@@ -71,8 +71,11 @@ application source: build scripts still execute code from the selected repositor
 
 `discovery.json` retains the application map, hypotheses, observations, every
 decision and outcome, prior memory references, usage, and potential findings.
-Screenshots accompany observations, and a browser trace records the exploration.
-Reports and referenced files have content hashes and remain private locally.
+Screenshots accompany observations. Switching actors creates a fresh browser
+context, including IndexedDB and Cache Storage; each context retains a separate
+trace (`discovery-trace.zip`, then numbered segments). Saved page maps remain
+snapshots of what was known at that point. Reports and referenced files have
+content hashes and remain private locally.
 The dashboard exposes the report, decision trail, map, and findings.
 
 The harness evaluates each reported expectation against captured visible text or
@@ -82,8 +85,9 @@ text makes text checks inconclusive. Supported expectations are `text_present`,
 
 A read-only investigation is replayed from its actor's entry in a fresh browser
 context, with the same initial synthetic session. Recorded controls must still
-match; navigation must reach the same page, and error reports must reproduce the
-same error. Automatic replay stops after any application mutation, after 30
+match their labels, names and destinations, not just their DOM position.
+Navigation must reach the captured observation's page, and error reports must
+reproduce an error from that observation. Automatic replay stops after any application mutation, after 30
 actions, on forbidden requests, or on divergent controls/state. It never repeats
 a mutation to manufacture evidence. These reports remain **observed**; a matching
 independent replay becomes **reproduced**. Replay steps, actor, candidate SHA,
@@ -102,13 +106,15 @@ Before each run, ATM reads up to five completed, hash-verified discovery reports
 from the same source repository and history directory. It carries a bounded
 summary of known pages, investigations, findings, and unfinished work. The agent
 is told that memory is stale evidence to revisit, not current truth. Invalid
-reports are excluded with a visible warning. Memory is reconstructed from retained
+reports, including those with altered supporting screenshots or traces, are
+excluded with a visible warning. Memory is reconstructed from retained
 evidence, so concurrent runs do not overwrite a shared memory file. Local and
 GitHub histories are not synchronized automatically.
 
 Each run permits at most 40 model requests, 10 minutes of exploration, 2,000 output
 tokens per request, and 100,000 accounted tokens. The last response can exceed the
-token threshold; its action is not executed. These are resource bounds, not a
+token threshold; its action is not executed. Reaching the threshold exactly stops
+further requests. Request counts include failed attempts. These are resource bounds, not a
 currency budget. Each request has at most 60,000 input characters. Provider errors,
 missing usage accounting, cancellation, and exhausted budgets retain partial
 evidence and cannot appear as complete exploration. A completed run means the

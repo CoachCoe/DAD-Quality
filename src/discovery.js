@@ -64,13 +64,15 @@ export async function discover({ provider, browser, report, memory = [], signal,
   try {
     for (let step = 1; step <= maxRequests; step++) {
       signal.throwIfAborted();
+      if (report.tokens >= discoveryLimits.totalTokens) { report.status = 'budget-exhausted'; report.summary = 'Token budget reached; no further request was sent.'; break; }
       const observation = await browser.observe();
       report.observations.push(observation);
       report.pages = browser.pages();
+      // Count attempted requests, including provider failures and cancellation.
+      report.requests++;
       await onUpdate();
       const decision = await provider({ observation, history, investigations: report.investigations, memory, remaining: { requests: maxRequests - step + 1, tokens: discoveryLimits.totalTokens - report.tokens }, signal });
       signal.throwIfAborted();
-      report.requests++;
       if (!Number.isInteger(decision.tokens) || decision.tokens < 0) throw new RunError('Invalid provider token accounting.');
       report.tokens += decision.tokens;
       if (report.tokens > discoveryLimits.totalTokens) { report.status = 'budget-exhausted'; report.summary = 'Token budget reached; last response was not executed.'; break; }
@@ -86,7 +88,7 @@ export async function discover({ provider, browser, report, memory = [], signal,
           const initial = evaluateExpectation(action, observation);
           if (!initial.evaluable || initial.passed) event.outcome = initial.reason ?? 'Rejected: captured evidence satisfies the expectation.';
           else {
-            const reproduction = await browser.reproduce(action);
+            const reproduction = await browser.reproduce(action, observation);
             const fingerprint = digest(JSON.stringify([observation.actor, observation.path, action.expectation, action.text.trim().toLowerCase(), action.expectation === 'no_server_error' ? observation.serverErrors : action.expectation === 'no_page_error' ? observation.pageErrors : null])).slice(0, 24);
             const finding = { id: fingerprint, title: action.title, basis: action.reason, investigationId: active.id, actor: observation.actor, path: observation.path, expectation: action.expectation, text: action.text, initial, reproduction, status: reproduction.status === 'reproduced' ? 'reproduced' : 'observed', needsReview: true };
             if (!report.findings.some(f => f.id === fingerprint)) report.findings.push(finding);

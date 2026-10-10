@@ -20,6 +20,29 @@ async function fixture(t) {
     if (request.url === '/write') { mutations++; response.end('saved'); return; }
     response.setHeader('Content-Type', 'text/html');
     const who = request.headers.cookie?.includes('test-a') ? 'Donor A' : request.headers.cookie?.includes('test-b') ? 'Donor B' : 'Guest';
+    if (request.url === '/changing') {
+      response.end('<html lang="en"><title>Changing controls</title><body><div id="fields"><label>Search<input name="search"></label><label>Email<input name="email"></label></div><button onclick="fields.prepend(fields.lastElementChild)">Swap fields</button></body></html>');
+      return;
+    }
+    if (request.url === '/storage') {
+      response.end(`<html lang="en"><title>Storage</title><body><h1>${who}</h1><p id="status">Loading storage</p><script>
+        (async () => {
+          const request = indexedDB.open('actor-storage', 1);
+          request.onupgradeneeded = () => request.result.createObjectStore('state');
+          const db = await new Promise((resolve, reject) => { request.onsuccess = () => resolve(request.result); request.onerror = reject; });
+          const tx = db.transaction('state', 'readwrite');
+          const prior = tx.objectStore('state').get('owner');
+          const owner = await new Promise(resolve => { prior.onsuccess = () => resolve(prior.result ?? 'empty'); });
+          tx.objectStore('state').put('${who}', 'owner');
+          const cache = await caches.open('actor-cache');
+          const cached = await cache.match('/stored-owner');
+          const cachedOwner = cached ? await cached.text() : 'empty';
+          await cache.put('/stored-owner', new Response('${who}'));
+          document.querySelector('#status').textContent = 'IndexedDB: ' + owner + '; Cache: ' + cachedOwner;
+        })();
+      </script></body></html>`);
+      return;
+    }
     if (request.url === '/broken') { response.statusCode = 500; response.end('<html lang="en"><title>Failed</title><body><h1>Unexpected service failure</h1></body></html>'); return; }
     response.end(`<html lang="en"><title>Application</title><body><h1>${who}</h1><a href="/broken">Browse catalog</a><a href="http://example.invalid/">External</a><label>Search<input name="search"></label><button onclick="fetch('/write',{method:'POST'})">Save</button></body></html>`);
   });
@@ -38,10 +61,13 @@ test('discovery browser maps observed controls, isolates actors, reproduces a se
   assert.match(observation.text, /Guest/);
   assert.equal(JSON.stringify(observation).includes('test-a'), false);
   assert.ok(observation.pages.some(p => p.path === '/broken'));
+  const originalPages = structuredClone(observation.pages);
   await assert.rejects(browser.act(action('navigate', { target: 'http://example.invalid' })), /discovered page/);
   await assert.rejects(browser.act(action('click', { target: observation.controls.find(c => c.label === 'External').id })), /outside/);
   await browser.act(action('switch_actor', { target: 'donor-a' }));
+  const guestObservation = observation;
   observation = await browser.observe(); assert.match(observation.text, /Donor A/);
+  assert.deepEqual(guestObservation.pages, originalPages, 'Later visits must not rewrite earlier observations');
   await browser.act(action('switch_actor', { target: 'donor-b' }));
   observation = await browser.observe(); assert.match(observation.text, /Donor B/); assert.doesNotMatch(observation.text, /Donor A/);
   await browser.act(action('click', { target: observation.controls.find(c => c.label === 'Browse catalog').id }));
@@ -49,6 +75,27 @@ test('discovery browser maps observed controls, isolates actors, reproduces a se
   const replay = await browser.reproduce(action('report', { expectation: 'no_server_error', title: 'Catalog fails' }));
   assert.equal(replay.status, 'reproduced'); assert.equal(replay.observation.serverErrors[0].status, 500);
   assert.equal(replay.steps.length, 1);
+  const differentObservation = { ...observation, serverErrors: [{ path: '/different', status: 500 }] };
+  const mismatch = await browser.reproduce(action('report', { expectation: 'no_server_error', title: 'Original error' }), differentObservation);
+  assert.equal(mismatch.status, 'inconclusive');
+  assert.match(mismatch.reason, /same server failure did not recur/);
+});
+
+test('switching actors isolates IndexedDB and Cache Storage and preserves every trace segment', async t => {
+  const app = await fixture(t);
+  const root = await mkdtemp(path.join(os.tmpdir(), 'atm-discovery-actors-'));
+  const run = await Run.create(root, { mode: 'exploration' }, ['discovery'], discoveryPolicy());
+  const result = { evidence: [] };
+  const browser = await openDiscoveryBrowser({ origin: app.origin, actors: actors.map(a => ({ ...a, entry: '/storage' })), signal, run, result });
+  t.after(async () => { await browser.close(); await rm(root, { recursive: true, force: true }); });
+  for (const id of ['guest', 'donor-a', 'donor-b']) {
+    if (id !== 'guest') await browser.act(action('switch_actor', { target: id }));
+    const observation = await browser.observe();
+    assert.match(observation.text, /IndexedDB: empty; Cache: empty/);
+    assert.deepEqual(observation.pageErrors, []);
+  }
+  await browser.close();
+  assert.deepEqual(result.evidence.filter(e => e.path.includes('trace')).map(e => e.path), ['evidence/discovery-trace.zip', 'evidence/discovery-trace-2.zip', 'evidence/discovery-trace-3.zip']);
 });
 
 test('mutating experiments retain observations but are never automatically replayed', async t => {
@@ -63,6 +110,18 @@ test('mutating experiments retain observations but are never automatically repla
   const replay = await browser.reproduce(action('report', { expectation: 'text_present', text: 'Saved', title: 'No confirmation' }));
   assert.equal(replay.status, 'inconclusive'); assert.match(replay.reason, /mutation/);
   assert.equal(app.mutations(), 1);
+});
+
+test('a changed input at the same DOM position cannot receive an action intended for another field', async t => {
+  const app = await fixture(t);
+  const browser = await openDiscoveryBrowser({ origin: app.origin, actors: [{ ...actors[0], entry: '/changing' }], signal });
+  t.after(() => browser.close());
+  const before = await browser.observe();
+  const search = before.controls.find(c => c.label === 'Search');
+  await browser.act(action('click', { target: before.controls.find(c => c.label === 'Swap fields').id }));
+  await assert.rejects(browser.act(action('fill', { target: search.id, value: 'wrong recipient' })), /Observed control changed/);
+  const after = await browser.observe();
+  assert.equal(after.controls.find(c => c.label === 'Email').value, '');
 });
 
 test('discovery loop records a defect in real browser evidence and dashboard exposes hypotheses, memory and integrity', async t => {
