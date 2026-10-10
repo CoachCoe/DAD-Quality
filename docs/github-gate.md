@@ -5,6 +5,14 @@ implements a **local acceptance gate** on an ephemeral runner. It does not deplo
 staging or production, exercise live integrations, run the optional AI provider,
 or replace existing CI, security, performance or deployment requirements.
 
+## Deferred follow-up
+
+On 2026-10-09, Shawn deferred making **ATM acceptance** a required status check
+on ImpactGraph's `dev` branch. Leave branch protection unchanged until explicitly
+resumed. The workflow may run and report results, but its status is not currently
+an enforced merge requirement. When resumed, add the check while preserving
+existing protections, then verify that a failing ATM result blocks merging.
+
 ## Installation
 
 1. Publish the ATM revision containing this integration. Copy
