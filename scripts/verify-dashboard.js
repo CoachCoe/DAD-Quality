@@ -24,9 +24,12 @@ try {
   console.log(`Dashboard launched ${id}`);
   await page.getByRole('button', { name: 'Run this revision again' }).waitFor({ timeout: 900_000 });
   const detail = await (await fetch(`${origin}/api/runs/${id}`)).json();
-  await writeFile('.atm/ui/live-acceptance.json', JSON.stringify({ id, decision: detail.run.decision, integrity: detail.integrity, errors }, null, 2));
+  await writeFile('.atm/ui/live-acceptance.json', JSON.stringify({ id, decision: detail.run.decision, release: detail.release, integrity: detail.integrity, errors }, null, 2));
   assert.equal(detail.run.decision.status, 'passed', JSON.stringify(detail.run.decision.reasons));
   assert.equal(detail.integrity.status, 'verified');
+  assert.equal(detail.run.results.find(r => r.id === 'donor-claim-journey')?.status, 'passed');
+  assert.ok(detail.run.policy?.definition, 'Live run must include a versioned policy');
+  assert.equal(detail.release.productionAuthorized, false);
   await page.screenshot({ path: '.atm/ui/run-detail.png', fullPage: true });
   await page.getByRole('button', { name: 'Close run details' }).click();
   await page.getByRole('heading', { name: 'Latest candidate passed.' }).waitFor();

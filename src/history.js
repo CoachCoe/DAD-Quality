@@ -86,7 +86,7 @@ export async function collectFindings(root, runs, triage = {}) {
         const id = digest(`${run.candidate?.source ?? 'impactgraph'}\n${result.id}\n${signature}`).slice(0, 24);
         let finding = groups.get(id);
         if (!finding) {
-          finding = { id, check: result.id, title: signature, kind: result.status === 'failed' ? 'Check failure' : 'Execution issue', firstSeen: run.startedAt, occurrences: [], severity: 'unassessed', disposition: 'untriaged', note: '', audit: [] };
+          finding = { id, source: run.candidate?.source, check: result.id, title: signature, kind: result.status === 'failed' ? 'Check failure' : 'Execution issue', firstSeen: run.startedAt, occurrences: [], severity: 'unassessed', disposition: 'untriaged', note: '', audit: [] };
           groups.set(id, finding);
         }
         finding.lastSeen = run.startedAt;

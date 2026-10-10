@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "id": "impactgraph-local",
+  "version": "1.0.0",
+  "adapter": "impactgraph",
+  "scope": "local-acceptance",
+  "checks": [
+    {
+      "id": "snapshot",
+      "required": true,
+      "timeoutMs": 120000,
+      "evidence": [
+        "candidate.json"
+      ]
+    },
+    {
+      "id": "docker",
+      "required": true,
+      "timeoutMs": 120000,
+      "evidence": [
+        "docker.log",
+        "compose-version.log"
+      ]
+    },
+    {
+      "id": "build",
+      "required": true,
+      "timeoutMs": 3600000,
+      "evidence": [
+        "build-api.log",
+        "build-web.log"
+      ]
+    },
+    {
+      "id": "database",
+      "required": true,
+      "timeoutMs": 300000,
+      "evidence": [
+        "migrations.log",
+        "test-migrations.log"
+      ]
+    },
+    {
+      "id": "api-tests",
+      "required": true,
+      "timeoutMs": 900000,
+      "evidence": [
+        "api-tests.log"
+      ]
+    },
+    {
+      "id": "web-tests",
+      "required": true,
+      "timeoutMs": 900000,
+      "evidence": [
+        "web-tests.log"
+      ]
+    },
+    {
+      "id": "deploy",
+      "required": true,
+      "timeoutMs": 180000,
+      "evidence": [
+        "readiness.log"
+      ]
+    },
+    {
+      "id": "staff-journey",
+      "required": true,
+      "timeoutMs": 180000,
+      "evidence": [
+        "staff-verification.json",
+        "staff-trace.zip"
+      ],
+      "scenario": {
+        "id": "staff-journey",
+        "version": 1
+      }
+    },
+    {
+      "id": "donor-claim-journey",
+      "required": true,
+      "timeoutMs": 180000,
+      "evidence": [
+        "donor-verification.json",
+        "donor-trace.zip"
+      ],
+      "scenario": {
+        "id": "donor-claim-journey",
+        "version": 1
+      }
+    },
+    {
+      "id": "cleanup",
+      "required": true,
+      "timeoutMs": 120000,
+      "evidence": [
+        "cleanup.log"
+      ]
+    }
+  ],
+  "findings": {
+    "blockingSeverities": [
+      "unassessed",
+      "high",
+      "critical"
+    ]
+  },
+  "exceptions": {
+    "mode": "disabled"
+  }
+}

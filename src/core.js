@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, writeFile, rename, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, rename, readFile, lstat } from 'node:fs/promises';
 import path from 'node:path';
 
 export class RunError extends Error {
@@ -48,6 +48,7 @@ export async function verifyEvidence(directory, run) {
         continue;
       }
       try {
+        if (!(await lstat(path.join(directory, 'evidence'))).isDirectory() || !(await lstat(path.join(directory, relative))).isFile()) throw new Error('Evidence must be a regular file');
         const bytes = await readFile(path.join(directory, relative));
         if (digest(bytes) !== item.sha256 || bytes.length !== item.bytes) issues.push(`${result.id}: changed evidence ${relative}`);
       } catch { issues.push(`${result.id}: missing evidence ${relative}`); }
@@ -67,6 +68,7 @@ body{font:16px/1.6 system-ui,sans-serif;margin:40px auto;padding:0 24px;max-widt
 h1{font-size:32px;line-height:1.2}small{color:#43556b}table{border-collapse:collapse;width:100%;background:white}td,th{text-align:left;padding:12px;border-bottom:1px solid #d6dee7;vertical-align:top}code{overflow-wrap:anywhere}a{color:#1250a3}.status{font-weight:700}li{margin:8px 0}pre{white-space:pre-wrap}header{border-bottom:4px solid #314d79;margin-bottom:28px}footer{margin-top:30px}
 </style><header><small>ATM / LOCAL VALIDATION</small><h1>${escape(decision.status.toUpperCase())}</h1>
 <p>${decision.eligible ? 'Selected local checks passed.' : 'Selected local checks do not authorize acceptance.'} This report does not authorize a production release.</p></header>
+${run.release ? `<section><h2>Local acceptance: ${escape(run.release.status)}</h2><p>Policy ${escape(run.policy.definition.id)} ${escape(run.policy.definition.version)} · <code>${escape(run.policy.digest)}</code></p><p>Assessment captured at completion. Use inspect or the dashboard to reassess current findings and evidence.</p><ul>${run.release.reasons.map(reason => `<li>${escape(reason)}</li>`).join('')}</ul></section>` : ''}
 <p>Run <code>${escape(run.id)}</code><br>Revision <code>${escape(run.candidate?.revision ?? 'unresolved')}</code><br>Started ${escape(run.startedAt)}<br>Finished ${escape(run.finishedAt ?? 'running')}</p>
 <table><thead><tr><th>Check</th><th>Result</th><th>Evidence</th></tr></thead><tbody>${run.results.map(r => `<tr><td>${escape(r.id)}${r.required ? '' : ' (advisory)'}</td><td><span class="status">${escape(r.status)}</span><br>${escape(r.summary)}</td><td>${(r.evidence ?? []).map(e => `<a href="${escape(e.path)}">${escape(e.path)}</a>`).join('<br>')}</td></tr>`).join('')}</tbody></table>
 <ul>${decision.reasons.map(reason => `<li>${escape(reason)}</li>`).join('')}</ul>
@@ -74,11 +76,11 @@ h1{font-size:32px;line-height:1.2}small{color:#43556b}table{border-collapse:coll
 }
 
 export class Run {
-  static async create(root, options, required) {
+  static async create(root, options, required, policy) {
     const id = `atm-${new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)}-${randomUUID().slice(0, 8)}`;
     const dir = path.resolve(root, id);
     await mkdir(path.join(dir, 'evidence'), { recursive: true, mode: 0o700 });
-    const run = new Run(dir, { schemaVersion: 1, id, startedAt: now(), options, required, policy: { version: 1, scope: 'local-validation', digest: digest(JSON.stringify(required)) }, results: [], decision: evaluate(required, []) });
+    const run = new Run(dir, { schemaVersion: policy ? 2 : 1, id, startedAt: now(), options, required, policy: policy ?? { version: 1, scope: 'local-validation', digest: digest(JSON.stringify(required)) }, results: [], decision: evaluate(required, []) });
     await run.save();
     return run;
   }

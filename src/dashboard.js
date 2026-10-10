@@ -7,6 +7,8 @@ import { atomicJSON, now, redact, verifyEvidence } from './core.js';
 import { command } from './process.js';
 import { executeRun } from './runner.js';
 import { listRuns, readRun, summarize, compareRuns, collectFindings } from './history.js';
+import { assessRelease } from './release.js';
+import { loadPolicy } from './policy.js';
 
 const assets = fileURLToPath(new URL('../web/', import.meta.url));
 const MAX_BODY = 16_384;
@@ -34,13 +36,15 @@ async function jsonBody(request) {
 }
 
 export class Dashboard {
-  constructor({ repo, root = '.atm/runs', executor = executeRun, resolve = resolveRevision, model = process.env.ATM_MODEL }) {
+  constructor({ repo, root = '.atm/runs', executor = executeRun, resolve = resolveRevision, model = process.env.ATM_MODEL, policy }) {
     this.repo = path.resolve(repo); this.root = path.resolve(root); this.model = model;
     this.executor = executor; this.resolve = resolve;
+    this.policyFile = policy;
     this.active = null; this.state = { watch: { enabled: false, revision: 'HEAD', lastRevision: null }, triage: {} };
     this.control = path.join(this.root, '.dashboard'); this.mutations = Promise.resolve(); this.starting = false; this.closing = false;
   }
   async initialize() {
+    this.policy = await loadPolicy(this.policyFile);
     await mkdir(this.control, { recursive: true, mode: 0o700 });
     this.root = await realpath(this.root);
     this.control = path.join(this.root, '.dashboard');
@@ -68,11 +72,20 @@ export class Dashboard {
     return work;
   }
   async history() { return listRuns(this.root); }
+  async detail(id) {
+    const run = await readRun(this.root, id);
+    const { runs } = await this.history();
+    const baseline = runs.find(r => r.id !== run.id && r.startedAt < run.startedAt && r.finishedAt && r.candidate?.source === run.candidate?.source && r.options?.adapter === run.options?.adapter);
+    const issues = await verifyEvidence(path.join(this.root, run.id), run);
+    const release = await assessRelease(this.root, run);
+    return { run, release, summary: summarize(run, this.active?.id), comparison: compareRuns(run, baseline), integrity: { status: issues.length ? 'invalid' : 'verified', issues } };
+  }
   async snapshot() {
     const { runs, warnings } = await this.history();
     const findings = await collectFindings(this.root, runs, this.state.triage);
-    return { project: { name: path.basename(this.repo), repo: this.repo, profile: 'ImpactGraph · local acceptance', aiConfigured: Boolean(process.env.OPENAI_API_KEY && this.model), model: this.model ?? null },
+    return { project: { name: path.basename(this.repo), repo: this.repo, profile: 'ImpactGraph · local acceptance', policy: { id: this.policy.definition.id, version: this.policy.definition.version, digest: this.policy.digest }, aiConfigured: Boolean(process.env.OPENAI_API_KEY && this.model), model: this.model ?? null },
       runs: runs.map(run => summarize(run, this.active?.id)), findings, warnings,
+      latestRelease: runs[0] ? await assessRelease(this.root, runs[0]) : null,
       active: this.active ? { id: this.active.id, revision: this.active.revision, cancelRequested: this.active.controller.signal.aborted } : null,
       starting: this.starting, watch: this.state.watch, lastLaunchError: this.lastLaunchError ?? null };
   }
@@ -90,7 +103,7 @@ export class Dashboard {
       this.lastLaunchError = null;
       let created;
       const ready = new Promise(resolve => { created = resolve; });
-      active.completion = Promise.resolve().then(() => this.executor({ repo: this.repo, revision: sha, output: this.root, ai, requireAI, model: this.model, trigger, signal: controller.signal, onCreated: run => { active.id = run.data.id; created(); } }))
+      active.completion = Promise.resolve().then(() => this.executor({ repo: this.repo, revision: sha, output: this.root, policy: this.policyFile, ai, requireAI, model: this.model, trigger, signal: controller.signal, onCreated: run => { active.id = run.data.id; created(); } }))
         .catch(error => { this.lastLaunchError = redact(error.message); })
         .finally(() => { if (this.active === active) this.active = null; created(); });
       await ready;
@@ -175,11 +188,7 @@ export async function createDashboardServer(options) {
       if (cancel && request.method === 'POST') { dashboard.cancel(cancel[1]); return json(response, 202, { cancelRequested: true }); }
       const detail = /^\/api\/runs\/([^/]+)$/.exec(route);
       if (detail && request.method === 'GET') {
-        const run = await readRun(dashboard.root, detail[1]);
-        const { runs } = await dashboard.history();
-        const baseline = runs.find(r => r.id !== run.id && r.startedAt < run.startedAt && r.finishedAt && r.candidate?.source === run.candidate?.source && r.options?.adapter === run.options?.adapter);
-        const issues = await verifyEvidence(path.join(dashboard.root, run.id), run);
-        return json(response, 200, { run, summary: summarize(run, dashboard.active?.id), comparison: compareRuns(run, baseline), integrity: { status: issues.length ? 'invalid' : 'verified', issues } });
+        return json(response, 200, await dashboard.detail(detail[1]));
       }
       const artifact = /^\/evidence\/([^/]+)\/([A-Za-z0-9_.-]+)$/.exec(route);
       if (artifact && request.method === 'GET') {

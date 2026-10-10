@@ -1,37 +1,63 @@
 import path from 'node:path';
-import { Run } from './core.js';
-import { ImpactGraph, requiredChecks } from './impactgraph.js';
-import { staffJourney } from './browser.js';
+import { Run, RunError } from './core.js';
+import { ImpactGraph } from './impactgraph.js';
+import { staffJourney, donorClaimJourney } from './browser.js';
 import { publicAgent } from './agent.js';
+import { loadPolicy } from './policy.js';
+import { assessRelease } from './release.js';
 
-export async function executeRun({ repo, revision = 'HEAD', output = '.atm/runs', ai = false, requireAI = false, model, signal = new AbortController().signal, trigger = 'cli', onCreated = () => {} }) {
-  const required = [...requiredChecks, ...(requireAI ? ['ai-public-journey'] : [])];
-  const run = await Run.create(output, { adapter: 'impactgraph', revision, ai: ai || requireAI, model, trigger }, required);
+export async function executeRun({ repo, revision = 'HEAD', output = '.atm/runs', policy: policyFile, ai = false, requireAI = false, model, signal = new AbortController().signal, trigger = 'cli', onCreated = () => {} }) {
+  const policy = await loadPolicy(policyFile, { ai, requireAI });
+  const checks = policy.definition.checks;
+  const required = checks.filter(c => c.required).map(c => c.id);
+  const run = await Run.create(output, { adapter: 'impactgraph', revision, ai: checks.some(c => c.id === 'ai-public-journey'), model, trigger }, required, policy);
   onCreated(run);
   console.log(`Evidence: ${run.dir}`);
   const adapter = new ImpactGraph(run, { repo, revision, signal });
+  const step = async (id, action) => {
+    const check = checks.find(c => c.id === id);
+    if (!check) return true;
+    const deadline = AbortSignal.timeout(check.timeoutMs);
+    adapter.signal = id === 'cleanup' ? deadline : AbortSignal.any([signal, deadline]);
+    return run.step(id, async result => {
+      result.timeoutMs = check.timeoutMs;
+      if (check.scenario) result.scenario = check.scenario;
+      try {
+        const outcome = await action(result);
+        if (deadline.aborted) throw new RunError(`${id} exceeded its policy time budget.`);
+        return outcome;
+      } catch (error) {
+        if (deadline.aborted && !signal.aborted) throw new RunError(`${id} exceeded its policy time budget.`);
+        throw error;
+      }
+    });
+  };
   try {
     let ready = true;
     for (const stage of ['snapshot', 'docker', 'build', 'database']) {
       if (!ready) break;
-      ready = await run.step(stage, result => adapter[stage](result));
+      ready = await step(stage, result => adapter[stage](result));
     }
     if (ready && !signal.aborted) {
-      await run.step('api-tests', result => adapter.suite(result, 'api-tests'));
-      await run.step('web-tests', result => adapter.suite(result, 'web-tests'));
-      if (!signal.aborted && await run.step('deploy', result => adapter.deploy(result))) {
-        await run.step('staff-journey', result => staffJourney(adapter, result));
-        if ((ai || requireAI) && !signal.aborted) await run.step('ai-public-journey', result => publicAgent(adapter, result, { model, apiKey: process.env.OPENAI_API_KEY }));
+      await step('api-tests', result => adapter.suite(result, 'api-tests'));
+      await step('web-tests', result => adapter.suite(result, 'web-tests'));
+      if (!signal.aborted && await step('deploy', result => adapter.deploy(result))) {
+        for (const [id, handler] of [['staff-journey', staffJourney], ['donor-claim-journey', donorClaimJourney]]) {
+          if (!signal.aborted) await step(id, result => handler(adapter, result));
+        }
+        if (!signal.aborted) await step('ai-public-journey', result => publicAgent(adapter, result, { model, apiKey: process.env.OPENAI_API_KEY }));
       }
     }
   } finally {
-    await run.step('cleanup', result => adapter.cleanup(result));
-    for (const id of required) {
-      if (!run.data.results.some(result => result.id === id)) run.data.results.push({ id, required: true, status: signal.aborted ? 'canceled' : 'inconclusive', summary: 'Not executed because a prerequisite did not complete.', evidence: [] });
+    await step('cleanup', result => adapter.cleanup(result));
+    for (const check of checks) {
+      if (!run.data.results.some(result => result.id === check.id)) run.data.results.push({ id: check.id, required: check.required, status: signal.aborted ? 'canceled' : 'inconclusive', summary: 'Not executed because a prerequisite did not complete.', evidence: [] });
     }
     if (signal.aborted) run.data.canceledAt = new Date().toISOString();
     await run.finish();
+    run.data.release = await assessRelease(path.resolve(output), run.data);
+    await run.save();
   }
-  console.log(`\n${run.data.decision.status.toUpperCase()} · ${path.join(run.dir, 'report.html')}`);
+  console.log(`\nChecks: ${run.data.decision.status.toUpperCase()} · Local acceptance: ${run.data.release.status.toUpperCase()} · ${path.join(run.dir, 'report.html')}`);
   return run;
 }

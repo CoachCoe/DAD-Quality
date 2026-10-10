@@ -1,13 +1,12 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { command } from './process.js';
 import { digest, RunError } from './core.js';
 
 const POSTGRES = 'postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea';
 const NGINX = 'nginx:1.30.5-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94';
-export const requiredChecks = ['snapshot', 'docker', 'build', 'database', 'api-tests', 'web-tests', 'deploy', 'staff-journey', 'cleanup'];
 
 async function freePort() {
   const server = createServer();
@@ -58,7 +57,7 @@ export class ImpactGraph {
     const { stdout } = await command('git', ['rev-parse', '--verify', `${this.revision}^{commit}`], { cwd: this.repo, signal: this.signal });
     const revision = stdout.trim();
     if (!/^[a-f0-9]{40,64}$/.test(revision)) throw new RunError('Invalid source revision.');
-    const tree = await command('git', ['ls-tree', '-r', '--name-only', revision], { cwd: this.repo });
+    const tree = await command('git', ['ls-tree', '-r', '--name-only', revision], { cwd: this.repo, signal: this.signal });
     const files = tree.stdout.trim().split('\n');
     if (files.some(f => /(^|\/)\.env(?:\.|$)/.test(f) && !f.endsWith('.example'))) throw new RunError('Snapshot refuses tracked environment files containing potential credentials.');
     for (const file of ['apps/donor-api/Dockerfile', 'apps/web/Dockerfile', 'apps/web/package-lock.json']) {
@@ -68,7 +67,7 @@ export class ImpactGraph {
     const archive = path.join(this.run.dir, 'source.tar');
     await command('git', ['archive', '--format=tar', `--output=${archive}`, revision], { cwd: this.repo, signal: this.signal });
     await command('tar', ['-xf', archive, '-C', this.source], { signal: this.signal });
-    const worktree = await command('git', ['status', '--porcelain'], { cwd: this.repo });
+    const worktree = await command('git', ['status', '--porcelain'], { cwd: this.repo, signal: this.signal });
     this.run.data.candidate = { revision, sourceArchiveSha256: digest(await readFile(archive)), source: this.repo, excludesWorkingTreeChanges: true, workingTreeDirty: Boolean(worktree.stdout.trim()) };
     result.evidence.push(await this.run.evidence('candidate.json', JSON.stringify(this.run.data.candidate, null, 2)));
     return { summary: `Archived committed revision ${revision.slice(0, 12)}; working tree and environment files excluded.` };
@@ -95,7 +94,7 @@ export class ImpactGraph {
     }
     this.run.data.candidate.images = {};
     for (const service of ['api', 'web']) {
-      const image = await command('docker', ['image', 'inspect', `${this.id}/${service}:local`, '--format', '{{.Id}}']);
+      const image = await command('docker', ['image', 'inspect', `${this.id}/${service}:local`, '--format', '{{.Id}}'], { signal: this.signal });
       this.run.data.candidate.images[service] = image.stdout.trim();
     }
     return { summary: 'Production images and test images built from the archived revision.' };
@@ -139,14 +138,46 @@ export class ImpactGraph {
     if (state.staff !== 1 || state.passkeys !== 1 || state.active_sessions < 1 || state.revoked_sessions < 1) throw new RunError('Persisted staff, passkey, or session invariants failed.', 'failed');
     return state;
   }
+  async donorFixture() {
+    // Only generated UUIDs and hexadecimal hashes enter SQL. The fixture is
+    // synthetic setup, not evidence that email delivery or gift checkout works.
+    const donor = randomUUID(), other = randomUUID();
+    const token = randomBytes(32).toString('base64url'), sibling = randomBytes(32).toString('base64url');
+    await this.sql(`BEGIN;
+INSERT INTO donors(id,email) VALUES ('${donor}','claim@atm.invalid'),('${other}','other@atm.invalid');
+INSERT INTO donor_login_links(id,donor_id,token_hash,expires_at) VALUES
+('${randomUUID()}','${donor}','${digest(token)}',now()+interval '15 minutes'),
+('${randomUUID()}','${donor}','${digest(sibling)}',now()+interval '15 minutes');
+COMMIT;`);
+    return { donor, other, links: [token, sibling].map(value => `${this.publicOrigin}/account/claim#token=${value}`) };
+  }
+  async verifyDonor({ signedOut = false } = {}) {
+    const { stdout } = await this.sql(`BEGIN READ ONLY;
+SELECT json_build_object(
+'claimed', (SELECT count(*) FROM donors WHERE email='claim@atm.invalid' AND claimed_at IS NOT NULL),
+'consumed_links', (SELECT count(*) FROM donor_login_links l JOIN donors d ON d.id=l.donor_id WHERE d.email='claim@atm.invalid' AND l.consumed_at IS NOT NULL),
+'sessions', (SELECT count(*) FROM donor_sessions s JOIN donors d ON d.id=s.donor_id WHERE d.email='claim@atm.invalid'),
+'active_sessions', (SELECT count(*) FROM donor_sessions s JOIN donors d ON d.id=s.donor_id WHERE d.email='claim@atm.invalid' AND s.revoked_at IS NULL AND s.expires_at>now()),
+'revoked_sessions', (SELECT count(*) FROM donor_sessions s JOIN donors d ON d.id=s.donor_id WHERE d.email='claim@atm.invalid' AND s.revoked_at IS NOT NULL),
+'other_claimed', (SELECT count(*) FROM donors WHERE email='other@atm.invalid' AND claimed_at IS NOT NULL),
+'other_sessions', (SELECT count(*) FROM donor_sessions s JOIN donors d ON d.id=s.donor_id WHERE d.email='other@atm.invalid'));
+ROLLBACK;`);
+    const value = stdout.split('\n').find(line => line.startsWith('{'));
+    if (!value) throw new RunError('Donor database verifier returned no result.');
+    const state = JSON.parse(value);
+    if (state.claimed !== 1 || state.consumed_links !== 2 || state.sessions !== 1 || state.active_sessions !== (signedOut ? 0 : 1) || state.revoked_sessions !== (signedOut ? 1 : 0) || state.other_claimed !== 0 || state.other_sessions !== 0) throw new RunError('Persisted donor claim, link, or session invariants failed.', 'failed');
+    return state;
+  }
   async cleanup(result) {
     if (this.created) {
       // Cleanup gets its own deadline and is not canceled with the run.
       try {
-        const logs = await this.compose(['logs', '--no-color', '--tail', '150', 'api', 'web', 'ingress'], { signal: undefined, timeout: 20_000 });
+        const logs = await this.compose(['logs', '--no-color', '--tail', '150', 'api', 'web', 'ingress'], { timeout: 20_000 });
         result.evidence.push(await this.run.evidence('services.log', logs.stdout + logs.stderr));
       } catch { /* Removal must still run if log collection fails. */ }
-      await this.logged(result, 'cleanup', 'docker', ['compose', '-p', this.id, '-f', this.file, 'down', '--volumes', '--remove-orphans', '--timeout', '10'], { signal: undefined, timeout: 90_000 });
+      await this.logged(result, 'cleanup', 'docker', ['compose', '-p', this.id, '-f', this.file, 'down', '--volumes', '--remove-orphans', '--timeout', '10'], { timeout: 90_000 });
+    } else {
+      result.evidence.push(await this.run.evidence('cleanup.log', 'No application environment was created.'));
     }
     return { summary: 'Run-owned containers and ephemeral databases removed. Images and evidence retained locally.' };
   }

@@ -108,3 +108,57 @@ export async function staffJourney(adapter, result) {
     } finally { await session.close(); }
   }
 }
+
+export async function donorClaimJourney(adapter, result) {
+  const signal = AbortSignal.any([adapter.signal, AbortSignal.timeout(180_000)]);
+  const session = await openBrowser([adapter.publicOrigin], { signal });
+  const page = await session.newPage();
+  const errors = [], verification = {};
+  page.on('pageerror', error => errors.push(error.message));
+  await session.context.tracing.start({ screenshots: true, snapshots: true, sources: false });
+  try {
+    const fixture = await adapter.donorFixture();
+    await expectStatus(page, `${adapter.publicOrigin}/api/donor/me/dashboard`, 401);
+    await page.goto(fixture.links[0]);
+    await page.getByRole('button', { name: 'Confirm and sign in', exact: true }).click();
+    await page.getByRole('heading', { name: 'You’re signed in', exact: true }).waitFor();
+    assert.equal(new URL(page.url()).hash, '', 'Claim token must be removed from the URL');
+    await page.getByRole('link', { name: 'View my dashboard', exact: true }).click();
+    await page.getByRole('heading', { name: 'Link Referrals', exact: true }).waitFor();
+    await page.reload();
+    await page.getByRole('heading', { name: 'Link Referrals', exact: true }).waitFor();
+    await page.goto(`${adapter.publicOrigin}/account/profile`);
+    await page.getByText('claim@atm.invalid', { exact: true }).waitFor();
+    verification.afterClaim = await adapter.verifyDonor();
+    await page.screenshot({ path: path.join(adapter.run.dir, 'evidence/donor-profile.png'), fullPage: true });
+    result.evidence.push(await adapter.run.reference('evidence/donor-profile.png'));
+    await page.getByRole('button', { name: 'Sign out of this device', exact: true }).click();
+    await page.getByRole('link', { name: 'Sign in to manage your profile', exact: true }).waitFor();
+    await expectStatus(page, `${adapter.publicOrigin}/api/donor/me/dashboard`, 401);
+    verification.afterLogout = await adapter.verifyDonor({ signedOut: true });
+    await session.context.clearCookies();
+    for (const link of fixture.links) {
+      await page.goto(link);
+      await page.getByRole('button', { name: 'Confirm and sign in', exact: true }).click();
+      await page.getByRole('alert').filter({ hasText: 'This link is invalid or expired. Request a new link.' }).waitFor();
+      await expectStatus(page, `${adapter.publicOrigin}/api/donor/me/dashboard`, 401);
+    }
+    verification.afterReplay = await adapter.verifyDonor({ signedOut: true });
+    assert.deepEqual(errors, [], 'Unexpected browser JavaScript errors');
+    assert.deepEqual(session.blocked, [], 'Unexpected outbound request attempts');
+    verification.assertions = { authenticatedReload: true, correctDonorProfile: true, tokenRemoved: true, logoutDeniedAccess: true, replayRejected: true, siblingRejected: true, anonymousDenied: true };
+    return { summary: 'Donor claim, authenticated reload, persisted link consumption, logout revocation, replay and sibling-link rejection verified; unrelated donor unchanged.' };
+  } catch (error) {
+    if (adapter.signal.aborted) throw new RunError('Run canceled.', 'canceled');
+    if (signal.aborted) throw new RunError('Donor claim journey exceeded its time budget.');
+    if (error instanceof RunError) throw error;
+    if (/net::ERR_|browser has been closed|Target closed/i.test(error.message)) throw new RunError(error.message);
+    throw new RunError(error.message, 'failed');
+  } finally {
+    try {
+      result.evidence.push(await adapter.run.evidence('donor-verification.json', JSON.stringify(verification, null, 2)));
+      await session.context.tracing.stop({ path: path.join(adapter.run.dir, 'evidence/donor-trace.zip') });
+      result.evidence.push(await adapter.run.reference('evidence/donor-trace.zip'));
+    } finally { await session.close(); }
+  }
+}

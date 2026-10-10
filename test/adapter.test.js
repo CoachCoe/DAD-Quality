@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { composeDefinition } from '../src/impactgraph.js';
+import { composeDefinition, ImpactGraph } from '../src/impactgraph.js';
 
 test('runtime isolates database and disables external integrations', () => {
   const config = composeDefinition({ id: 'atm-test', port: 43123, password: 'owner', apiPassword: 'api', staffPassword: 'staff' });
@@ -19,4 +19,20 @@ test('runtime isolates database and disables external integrations', () => {
   assert.match(config.services['api-tests'].environment.TEST_DATABASE_URL, /\/donor_go\?/);
   assert.match(config.services['api-tests'].environment.TEST_DATABASE_URL, /@test-postgres\//);
   assert.match(config.services.api.environment.DONOR_API_DATABASE_URL, /\/impactgraph_atm\?/);
+});
+
+test('donor verifier rejects extra sessions, unconsumed links and changes to another donor', async () => {
+  const adapter = new ImpactGraph({ data: { id: 'fixture' }, dir: '/tmp/fixture' }, { repo: '/synthetic' });
+  const good = { claimed: 1, consumed_links: 2, sessions: 1, active_sessions: 1, revoked_sessions: 0, other_claimed: 0, other_sessions: 0 };
+  let state = good;
+  adapter.sql = async query => { assert.match(query, /^BEGIN READ ONLY;/); assert.match(query, /ROLLBACK;/); return { stdout: `BEGIN\n${JSON.stringify(state)}\nROLLBACK` }; };
+  assert.deepEqual(await adapter.verifyDonor(), good);
+  for (const [key, value] of [['claimed', 0], ['consumed_links', 1], ['sessions', 2], ['active_sessions', 0], ['other_claimed', 1], ['other_sessions', 1]]) {
+    state = { ...good, [key]: value };
+    await assert.rejects(adapter.verifyDonor(), error => error.status === 'failed');
+  }
+  state = { ...good, active_sessions: 0, revoked_sessions: 1 };
+  await adapter.verifyDonor({ signedOut: true });
+  state = good;
+  await assert.rejects(adapter.verifyDonor({ signedOut: true }), error => error.status === 'failed');
 });

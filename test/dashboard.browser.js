@@ -7,6 +7,8 @@ import { chromium } from 'playwright';
 import AxeBuilder from '@axe-core/playwright';
 import { Run, RunError } from '../src/core.js';
 import { createDashboardServer } from '../src/dashboard.js';
+import { loadPolicy } from '../src/policy.js';
+import { writeFile } from 'node:fs/promises';
 
 test('dashboard supports run inspection, triage, launch, cancellation and mobile layout', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-ui-'));
@@ -38,6 +40,9 @@ test('dashboard supports run inspection, triage, launch, cancellation and mobile
   await accessible();
   await page.getByRole('button', { name: 'View evidence' }).click();
   await page.getByRole('heading', { name: 'Evidence integrity' }).waitFor();
+  await page.getByRole('heading', { name: 'Local acceptance', exact: true }).waitFor();
+  assert.match(await page.locator('#run-detail').innerText(), /Legacy run: no versioned policy/);
+  assert.match(await page.locator('#run-detail').innerText(), /Blocked/);
   await accessible();
   assert.match(await page.locator('#run-detail').innerText(), /failed.*→.*passed/s);
   await page.getByRole('button', { name: 'Close run details' }).click();
@@ -86,4 +91,35 @@ test('dashboard shows useful empty and malformed-run states', async t => {
   await page.getByLabel('Commit, branch, or tag').fill('--bad');
   await page.getByRole('button', { name: 'Start validation' }).click();
   await page.getByRole('alert').filter({ hasText: 'Enter a valid commit' }).waitFor();
+});
+
+test('policy evidence view distinguishes passing checks from blocked acceptance', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'atm-ui-policy-'));
+  const policy = await loadPolicy();
+  const run = await Run.create(root, { adapter: 'impactgraph' }, policy.definition.checks.filter(c => c.required).map(c => c.id), policy);
+  run.data.candidate = { revision: 'a'.repeat(40), source: '/synthetic/ImpactGraph', sourceArchiveSha256: 'b'.repeat(64), images: { api: `sha256:${'c'.repeat(64)}`, web: `sha256:${'d'.repeat(64)}` } };
+  for (const check of policy.definition.checks) {
+    const evidence = [];
+    for (const name of check.evidence) evidence.push(await run.evidence(name, `Synthetic ${name}`));
+    run.data.results.push({ id: check.id, status: 'passed', required: check.required, summary: 'Synthetic verification', finishedAt: run.data.startedAt, evidence });
+  }
+  await run.finish();
+  const app = await createDashboardServer({ repo: run.data.candidate.source, root, port: 0 });
+  const browser = await chromium.launch({ headless: true });
+  t.after(async () => { await browser.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto(app.origin);
+  await page.getByText('Local acceptance: Eligible', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'View evidence' }).click();
+  await page.getByText('impactgraph-local · 1.0.0', { exact: true }).waitFor();
+  await page.getByText('donor-claim-journey · v1', { exact: true }).click();
+  await page.getByText('Sign-out revokes session', { exact: true }).waitFor();
+  assert.deepEqual((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => ({ target: n.target, summary: n.failureSummary })) })), []);
+  await writeFile(path.join(run.dir, 'evidence/donor-verification.json'), 'tampered');
+  await page.getByText('Blocked', { exact: true }).waitFor();
+  assert.match(await page.locator('#run-detail').innerText(), /changed evidence evidence\/donor-verification.json/);
+  await page.getByRole('button', { name: 'Close run details' }).click();
+  await page.getByText('Local acceptance: Blocked', { exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Latest candidate passed.' }).waitFor();
 });
