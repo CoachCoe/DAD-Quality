@@ -1,0 +1,40 @@
+{
+  "title": "Giving pagination can lose keyboard focus when an earlier effect consumes the pending request",
+  "status": "reproduced; candidate fix validated in isolated containers; not applied to ImpactGraph",
+  "targetRevision": "1d3bd1774a6f65398d8aed2bb6f58d9375794118",
+  "originalAtmRun": "atm-20261010000117-0eb81514",
+  "suggestedSeverity": "medium",
+  "impact": "After paging gifts, the heading can remain unfocused and keyboard focus falls back to the document body.",
+  "rootCause": "The initial data effect can flush after the pagination click sets paged.current. It consumes the boolean before the new response arrives. Loading removes the old focused heading, and the new response no longer has a pending focus request.",
+  "evidence": [
+    {
+      "experiment": "50 repeated pagination cases with original component; waitFor used only after immediate assertion failure",
+      "result": "2 failures: one eventual focus recovery and one waitFor timeout"
+    },
+    {
+      "experiment": "250 pagination cases with an asynchronous focus assertion and conditional component instrumentation",
+      "result": "1 failure; ATM_STALE_FOCUS marker confirmed initial-page effect consumed pagination request"
+    },
+    {
+      "experiment": "250 pagination cases with candidate application change and asynchronous focus assertion",
+      "result": "All 250 pagination cases and 6 companion tests passed"
+    },
+    {
+      "experiment": "Full frontend validation with the two candidate files mounted read-only over the pinned build image",
+      "result": "Lint passed across 156 files; all 375 tests in 42 files passed; TypeScript check passed"
+    }
+  ],
+  "candidatePatch": "giving-focus.patch",
+  "candidateBehavior": "Record the previously displayed response when paging; only a different loaded response may consume the pending focus request. Await focus in the test because it is an effect-driven outcome.",
+  "validationEnvironment": {
+    "image": "atm-20261010000117-0eb81514/web-checks:local",
+    "network": "none",
+    "mounts": "Read-only candidate files; original ImpactGraph checkout and original ATM evidence unchanged"
+  },
+  "reproduction": "In an isolated copy of the pinned frontend, parameterize the final Account.test.tsx pagination case with it.each(Array.from({ length: 250 }, (_, index) => index)). Await the focus assertion with waitFor. The unpatched component may fail even with this wait; the race is scheduling-dependent.",
+  "limitations": [
+    "Passing repetitions do not prove absence of all scheduling races.",
+    "This validation uses React/jsdom; real browser keyboard acceptance should accompany integration of the patch.",
+    "The original failed ATM run remains failed; a new committed candidate must pass a complete ATM run before eligibility can change."
+  ]
+}
