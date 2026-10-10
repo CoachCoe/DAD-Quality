@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "impactgraph-local",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "adapter": "impactgraph",
   "scope": "local-acceptance",
   "checks": [
@@ -88,6 +88,53 @@
       "scenario": {
         "id": "donor-claim-journey",
         "version": 1
+      }
+    },
+    {
+      "id": "performance",
+      "required": false,
+      "timeoutMs": 180000,
+      "evidence": [
+        "performance.json"
+      ],
+      "profile": {
+        "version": 1,
+        "workload": "donor-reads-v1",
+        "requestTimeoutMs": 1500,
+        "thinkMs": 25,
+        "maxRequestsPerPhase": 10000,
+        "phases": [
+          {
+            "name": "warmup",
+            "durationMs": 3000,
+            "concurrency": 2
+          },
+          {
+            "name": "baseline",
+            "durationMs": 10000,
+            "concurrency": 2
+          },
+          {
+            "name": "burst",
+            "durationMs": 10000,
+            "concurrency": 12
+          },
+          {
+            "name": "recovery",
+            "durationMs": 10000,
+            "concurrency": 2
+          }
+        ],
+        "criteria": {
+          "minRequests": 20,
+          "maxP95Ms": null,
+          "maxErrorRate": null
+        },
+        "regression": {
+          "p95Ratio": 1.5,
+          "minP95IncreaseMs": 20,
+          "throughputRatio": 0.75
+        }
       }
     },
     {

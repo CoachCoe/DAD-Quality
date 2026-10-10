@@ -13,3 +13,11 @@ dialog{border:1px solid #dbe1d4;border-radius:12px;box-shadow:0 30px 100px #102c
 
 .policy-digest{display:block;overflow-wrap:anywhere;font-size:11px}.detail-aside li{margin-bottom:6px}
 .detail-aside summary{padding:10px 0;min-height:24px;cursor:pointer}.evidence-links a{display:inline-block;min-height:24px;padding:4px 0}
+
+.performance-panel { margin: 24px 0; padding: 20px; border: 1px solid var(--border, #d9dfd6); border-radius: 12px; min-width: 0; }
+.performance-panel h3 { margin-top: 0; }
+.performance-panel p, .performance-panel li { font-size: 13px; line-height: 1.6; }
+.performance-scroll { max-width: 100%; overflow-x: auto; }
+.performance-scroll table { width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap; }
+.performance-scroll caption { text-align: left; white-space: normal; margin-bottom: 10px; }
+.performance-scroll th, .performance-scroll td { padding: 10px 8px; text-align: left; border-bottom: 1px solid #d9dfd6; }

@@ -59,9 +59,10 @@ Only committed source is archived. Uncommitted changes, ignored files, local `.e
 7. Independently query persisted staff/passkey/session state in a read-only transaction. Check invitation replay, unauthenticated access, and public/staff host separation.
 8. Claim a synthetic donor account through the real UI, reload the authenticated dashboard, verify the correct donor profile, sign out, and reject both replay of the used link and a sibling link. Read-only SQL verifies the claim, link consumption and session revocation, and that another donor is unchanged.
 9. Optionally run bounded AI exploration of the guest donation entry point.
-10. Collect evidence, remove the environment, evaluate check outcomes and assess local acceptance against the recorded policy.
+10. Run advisory baseline, burst and recovery measurements against synthetic donor reads, saving per-route latency, throughput, errors and environment metadata. See [performance testing](docs/performance.md).
+11. Collect evidence, remove the environment, evaluate check outcomes and assess local acceptance against the recorded policy.
 
-The profile does **not** run the entire existing Playwright suite, external Stripe/mail flows, production nginx/TLS checks, vulnerability scans, performance tests, or production promotion. A passing report means its selected local checks passed, not that a production release is approved. Staff role-specific permission matrices remain a follow-up; current browser coverage checks authentication and host boundaries.
+The profile does **not** run the entire existing Playwright suite, external Stripe/mail flows, production nginx/TLS checks, vulnerability scans, production capacity/soak tests, or production promotion. A passing report means its selected local checks passed, not that a production release is approved. Staff role-specific permission matrices remain a follow-up; current browser coverage checks authentication and host boundaries.
 
 ## Versioned acceptance policy
 
@@ -82,7 +83,7 @@ There are two separate results:
 - **Check outcome (`decision`):** whether the selected required checks passed, failed, were canceled or remained inconclusive.
 - **Local acceptance (`release`):** whether a completed candidate satisfies the recorded policy, has complete and intact required evidence, and has no unresolved blocking findings. `productionAuthorized` is always false in this release.
 
-Default finding policy blocks unresolved **unassessed**, **high** and **critical** findings for the same source repository, including historical findings and findings from other branches. A subsequent pass is a review hint, not automatic resolution. This is deliberately conservative: triage old harness issues as such, with a reason, rather than treating them as confirmed product defects. Advisory checks do not affect the check outcome, but their findings still need assessment under the finding policy.
+Default finding policy blocks unresolved **unassessed**, **high** and **critical** findings for the same source repository, including historical findings and findings from other branches. A subsequent pass is a review hint, not automatic resolution. This is deliberately conservative: triage old harness issues as such, with a reason, rather than treating them as confirmed product defects. Advisory checks do not affect the check outcome, but their findings still need assessment under the finding policy. Advisory performance measurements are the explicit exception: their failures and execution issues stay in the report without creating blocking findings until performance is made required.
 
 Severity definitions: **critical** means credible account compromise, major data corruption/loss or broad service failure; **high** means a broken critical workflow or significant permission/integrity failure; **medium** means impaired behavior with a workable alternative; **low** means minor impact; **unassessed** means impact has not been reviewed. Confirmed, untriaged and reopened findings remain unresolved. Resolution or dismissal requires a reason, retained in the local triage audit. Repeated failures after resolution reopen the finding.
 
@@ -90,7 +91,7 @@ Severity definitions: **critical** means credible account compromise, major data
 
 The completion-time assessment stays in `run.json` and the static HTML report. CLI inspection and the dashboard recompute a current assessment using the recorded policy, current evidence files and current finding assessments. They share the same evaluator; reassessment does not rewrite historical results. Deleting history or editing manifests is not a supported way to clear a blocker. Retain the run history and `.dashboard/state.json` together. Old runs without a full versioned policy remain viewable but are ineligible under this new assessment.
 
-CLI exit codes: **0** locally eligible, **1** required check failed, **2** inconclusive or invalid evidence, **3** checks passed but acceptance blocked, **130** canceled. Automation should require exit code 0. This is a local decision contract; PR branch protection and production promotion enforcement are not connected yet.
+CLI exit codes: **0** locally eligible, **1** required check failed, **2** inconclusive or invalid evidence, **3** checks passed but acceptance blocked, **130** canceled. Automation should require exit code 0. The GitHub workflow uses this local decision contract. Required-check branch protection is explicitly deferred; production promotion is not connected.
 
 The donor fixture seeds an unclaimed account and two hashed one-time links only in the disposable database. It validates redemption and session behavior, not payment checkout or email delivery. The browser cannot query the database; the runner independently checks persisted state. Screenshots, a browser trace and a three-stage verification record support the result.
 
@@ -143,7 +144,7 @@ API implementation references: [OpenAI function calling](https://developers.open
 - Expand deployed acceptance scenarios: role-specific staff permissions, referral attribution, recurring gifts, worker recovery.
 - Add sandbox Stripe and captured-email services with explicit egress rules.
 - Adapt the existing full Playwright suite to deployed targets and ingest structured suite results.
-- Add security, accessibility and representative load gates to the required policy.
+- Add security/accessibility gates; calibrate performance budgets and expand the read baseline to write, worker, soak and capacity workloads.
 - Resolve ImpactGraph's build-time origin configuration before same-image staging/production promotion.
 - Add evidence retention, richer finding extraction, PR/staging triggers and an authenticated shared deployment.
 - Add production deployment and recovery automation only after staging evidence and rollback compatibility are established.

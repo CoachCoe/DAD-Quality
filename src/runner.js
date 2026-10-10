@@ -5,6 +5,7 @@ import { staffJourney, donorClaimJourney } from './browser.js';
 import { publicAgent } from './agent.js';
 import { loadPolicy } from './policy.js';
 import { assessRelease } from './release.js';
+import { performanceCheck } from './performance.js';
 
 export async function executeRun({ repo, revision = 'HEAD', sourceIdentity, output = '.atm/runs', policy: policyFile, ai = false, requireAI = false, model, signal = new AbortController().signal, trigger = 'cli', onCreated = () => {} }) {
   const policy = await loadPolicy(policyFile, { ai, requireAI });
@@ -46,6 +47,7 @@ export async function executeRun({ repo, revision = 'HEAD', sourceIdentity, outp
           if (!signal.aborted) await step(id, result => handler(adapter, result));
         }
         if (!signal.aborted) await step('ai-public-journey', result => publicAgent(adapter, result, { model, apiKey: process.env.OPENAI_API_KEY }));
+        if (!signal.aborted) await step('performance', result => performanceCheck(adapter, result, checks.find(c => c.id === 'performance').profile));
       }
     }
   } finally {

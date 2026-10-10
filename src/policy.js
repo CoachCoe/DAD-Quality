@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { scenarios } from './scenarios.js';
+import { validatePerformanceProfile } from './performance-config.js';
 
 export const defaultPolicyPath = fileURLToPath(new URL('../policies/impactgraph-local.json', import.meta.url));
 export const evidenceRequirements = {
@@ -11,6 +12,7 @@ export const evidenceRequirements = {
   'staff-journey': ['staff-verification.json', 'staff-trace.zip'],
   'donor-claim-journey': ['donor-verification.json', 'donor-trace.zip'],
   'ai-public-journey': ['agent-events.json', 'agent-final.png'], cleanup: ['cleanup.log'],
+  performance: ['performance.json'],
 };
 export function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
@@ -26,7 +28,13 @@ export function validatePolicy(policy) {
   if (policy.schemaVersion !== 1 || !/^[a-z0-9-]{1,80}$/.test(policy.id ?? '') || !/^\d+\.\d+\.\d+$/.test(policy.version ?? '') || policy.adapter !== 'impactgraph' || policy.scope !== 'local-acceptance') throw new Error('Unsupported policy identity, version, adapter or scope.');
   if (!Array.isArray(policy.checks) || !policy.checks.length || new Set(policy.checks.map(c => c?.id)).size !== policy.checks.length) throw new Error('Policy checks must be nonempty and unique.');
   for (const check of policy.checks) {
-    fields(check, ['id', 'required', 'timeoutMs', 'evidence', 'scenario']);
+    fields(check, ['id', 'required', 'timeoutMs', 'evidence', 'scenario', 'profile']);
+    if (check.id === 'performance') {
+      validatePerformanceProfile(check.profile);
+      const minimum = check.profile.phases.reduce((sum, phase) => sum + phase.durationMs + check.profile.requestTimeoutMs, 0) + 10000;
+      if (check.timeoutMs < minimum) throw new Error('Performance time budget cannot cover its workload.');
+      if (check.required && (check.profile.criteria.maxP95Ms === null || check.profile.criteria.maxErrorRate === null)) throw new Error('Required performance needs explicit latency and error budgets.');
+    } else if (check.profile !== undefined) throw new Error('Only performance checks accept a workload profile.');
     if (!Object.hasOwn(evidenceRequirements, check.id) || typeof check.required !== 'boolean' || !Number.isInteger(check.timeoutMs) || check.timeoutMs < 1000 || check.timeoutMs > 3_600_000) throw new Error('Unsupported check or timeout.');
     if (!Array.isArray(check.evidence) || new Set(check.evidence).size !== check.evidence.length || check.evidence.some(e => typeof e !== 'string' || !/^[A-Za-z0-9_.-]+$/.test(e)) || evidenceRequirements[check.id].some(e => !check.evidence.includes(e))) throw new Error(`Missing or invalid evidence contract: ${check.id}`);
     if (scenarios[check.id]) {

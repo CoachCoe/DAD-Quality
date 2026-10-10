@@ -9,6 +9,8 @@ import { Run, RunError } from '../src/core.js';
 import { createDashboardServer } from '../src/dashboard.js';
 import { loadPolicy } from '../src/policy.js';
 import { writeFile } from 'node:fs/promises';
+import { metrics, assessPerformance } from '../src/performance.js';
+import { hashPolicy } from '../src/policy.js';
 
 test('dashboard supports run inspection, triage, launch, cancellation and mobile layout', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-ui-'));
@@ -112,7 +114,7 @@ test('policy evidence view distinguishes passing checks from blocked acceptance'
   await page.goto(app.origin);
   await page.getByText('Local acceptance: Eligible', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'View evidence' }).click();
-  await page.getByText('impactgraph-local · 1.0.0', { exact: true }).waitFor();
+  await page.getByText(`impactgraph-local · ${policy.definition.version}`, { exact: true }).waitFor();
   await page.getByText('donor-claim-journey · v1', { exact: true }).click();
   await page.getByText('Sign-out revokes session', { exact: true }).waitFor();
   assert.deepEqual((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => ({ target: n.target, summary: n.failureSummary })) })), []);
@@ -122,4 +124,41 @@ test('policy evidence view distinguishes passing checks from blocked acceptance'
   await page.getByRole('button', { name: 'Close run details' }).click();
   await page.getByText('Local acceptance: Blocked', { exact: true }).waitFor();
   await page.getByRole('heading', { name: 'Latest candidate passed.' }).waitFor();
+});
+
+test('performance view compares candidates, remains accessible on mobile and rejects changed evidence', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'atm-ui-performance-'));
+  const policy = await loadPolicy(), profile = policy.definition.checks.find(c => c.id === 'performance').profile;
+  const environment = { kind: 'local', platform: 'fixture', arch: 'fixture', cpus: 2 };
+  let latest;
+  for (let i = 0; i < 2; i++) {
+    const run = await Run.create(root, { adapter: 'impactgraph' }, [], policy);
+    run.data.startedAt = `2026-10-0${i + 1}T00:00:00.000Z`;
+    run.data.candidate = { source: '/synthetic/ImpactGraph', revision: (i ? 'b' : 'a').repeat(40) };
+    const sample = { ms: i ? 100 : 20, status: 200, error: null };
+    const report = { schemaVersion: 1, profile, workloadDigest: hashPolicy(profile), environment, environmentDigest: hashPolicy(environment), completed: true, phases: profile.phases.map(p => ({ ...p, elapsedMs: p.durationMs, capped: false, ...metrics(Array(120).fill(sample), p.durationMs), endpoints: Object.fromEntries(['content', 'dashboard', 'gifts'].map(name => [name, metrics(Array(40).fill(sample), p.durationMs)])) })) };
+    report.assessment = assessPerformance(report);
+    run.data.results = [{ id: 'performance', status: 'passed', required: false, finishedAt: run.data.startedAt, summary: 'Synthetic performance fixture', evidence: [await run.evidence('performance.json', JSON.stringify(report))] }];
+    await run.finish(); latest = run;
+  }
+  const app = await createDashboardServer({ repo: '/synthetic/ImpactGraph', root, port: 0 });
+  const browser = await chromium.launch({ headless: true });
+  t.after(async () => { await browser.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1050 } });
+  const page = await context.newPage();
+  await page.goto(app.origin);
+  await page.getByRole('button', { name: 'View evidence' }).click();
+  await page.getByRole('heading', { name: 'Performance · Advisory' }).waitFor();
+  await page.getByText(/Regression signal detected against/).waitFor();
+  assert.match(await page.getByRole('region', { name: 'Performance report' }).innerText(), /baseline\/overall: p95 \+80\.0 ms/);
+  assert.equal(await page.getByRole('columnheader', { name: 'p99 ms' }).count(), 1);
+  await mkdir('.atm/ui', { recursive: true });
+  await page.screenshot({ path: '.atm/ui/performance-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  assert.deepEqual((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })), []);
+  await page.screenshot({ path: '.atm/ui/performance-mobile.png', fullPage: true });
+  await writeFile(path.join(latest.dir, 'evidence/performance.json'), '{}');
+  await page.getByText('Performance evidence integrity failed.', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('region', { name: 'Performance report' }).count(), 0);
 });

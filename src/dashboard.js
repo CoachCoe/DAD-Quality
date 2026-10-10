@@ -7,6 +7,7 @@ import { atomicJSON, now, redact, verifyEvidence } from './core.js';
 import { command } from './process.js';
 import { executeRun } from './runner.js';
 import { listRuns, readRun, summarize, compareRuns, collectFindings } from './history.js';
+import { performanceDetail } from './performance.js';
 import { assessRelease } from './release.js';
 import { loadPolicy } from './policy.js';
 
@@ -78,7 +79,7 @@ export class Dashboard {
     const baseline = runs.find(r => r.id !== run.id && r.startedAt < run.startedAt && r.finishedAt && r.candidate?.source === run.candidate?.source && r.options?.adapter === run.options?.adapter);
     const issues = await verifyEvidence(path.join(this.root, run.id), run);
     const release = await assessRelease(this.root, run);
-    return { run, release, summary: summarize(run, this.active?.id), comparison: compareRuns(run, baseline), integrity: { status: issues.length ? 'invalid' : 'verified', issues } };
+    return { run, release, performance: await performanceDetail(this.root, run, runs), summary: summarize(run, this.active?.id), comparison: compareRuns(run, baseline), integrity: { status: issues.length ? 'invalid' : 'verified', issues } };
   }
   async snapshot() {
     const { runs, warnings } = await this.history();

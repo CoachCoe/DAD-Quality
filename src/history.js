@@ -71,6 +71,9 @@ export async function collectFindings(root, runs, triage = {}) {
   // Only completed checks produce findings; in-progress results start inconclusive.
   for (const run of [...runs].reverse()) {
     for (const result of run.results) {
+      // Advisory performance is measurement only, including execution issues.
+      // It must not indirectly become a blocker via unassessed findings.
+      if (result.id === 'performance' && !run.required.includes('performance')) continue;
       if (!result.finishedAt || !['failed', 'inconclusive'].includes(result.status)) continue;
       let logs = '';
       const evidence = (result.evidence ?? []).filter(e => /^evidence\/[A-Za-z0-9_.-]+\.log$/.test(e.path));

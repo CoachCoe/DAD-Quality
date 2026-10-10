@@ -77,6 +77,7 @@ export class ImpactGraph {
   async docker(result) {
     await this.logged(result, 'docker', 'docker', ['info', '--format', '{{.ServerVersion}}']);
     await this.logged(result, 'compose-version', 'docker', ['compose', 'version']);
+    const resources = await command('docker', ['info', '--format', '{"version":{{json .ServerVersion}},"cpus":{{.NCPU}},"memoryBytes":{{.MemTotal}},"architecture":{{json .Architecture}}}'], { signal: this.signal });
     this.port = await freePort();
     this.publicOrigin = `http://localhost:${this.port}`; this.staffOrigin = `http://staff.localhost:${this.port}`;
     this.password = randomBytes(24).toString('hex'); this.apiPassword = randomBytes(24).toString('hex'); this.staffPassword = randomBytes(24).toString('hex');
@@ -84,7 +85,7 @@ export class ImpactGraph {
     // Runtime credentials are private, never linked in reports. These are run-local only.
     await writeFile(this.file, JSON.stringify(config, null, 2), { mode: 0o600 });
     await writeFile(path.join(this.run.dir, 'nginx.conf'), `server {\n listen 8080;\n server_name _;\n location / {\n  proxy_pass http://web:3000;\n  proxy_set_header Host $http_host;\n  proxy_set_header X-Forwarded-Proto $scheme;\n  proxy_set_header X-Forwarded-For $remote_addr;\n }\n}\n`, { mode: 0o600 });
-    this.run.data.environment = { publicOrigin: this.publicOrigin, staffOrigin: this.staffOrigin, outboundNetwork: 'internal Docker network', integrations: 'Stripe, SMTP and push disabled', composeSha256: digest(JSON.stringify(config)) };
+    this.run.data.environment = { docker: JSON.parse(resources.stdout), publicOrigin: this.publicOrigin, staffOrigin: this.staffOrigin, outboundNetwork: 'internal Docker network', integrations: 'Stripe, SMTP and push disabled', composeSha256: digest(JSON.stringify(config)) };
     return { summary: 'Docker ready; unique project and loopback port allocated.' };
   }
   async build(result) {
@@ -169,6 +170,24 @@ ROLLBACK;`);
     const state = JSON.parse(value);
     if (state.claimed !== 1 || state.consumed_links !== 2 || state.sessions !== 1 || state.active_sessions !== (signedOut ? 0 : 1) || state.revoked_sessions !== (signedOut ? 1 : 0) || state.other_claimed !== 0 || state.other_sessions !== 0) throw new RunError('Persisted donor claim, link, or session invariants failed.', 'failed');
     return state;
+  }
+  async performanceFixture() {
+    // Separate from the authentication journeys; no email or payment processor.
+    // Each donor has a full first page and ten additional synthetic gifts.
+    const cookies = [], statements = ['BEGIN;'];
+    for (let i = 0; i < 12; i++) {
+      const donor = randomUUID(), checkout = randomUUID(), token = randomBytes(32).toString('base64url');
+      cookies.push(`dad_donor_session=${token}`);
+      statements.push(`INSERT INTO donors(id,email,claimed_at) VALUES ('${donor}','load-${i}@atm.invalid',now());
+INSERT INTO donor_sessions(id,donor_id,token_hash,expires_at) VALUES ('${randomUUID()}','${donor}','${digest(token)}',now()+interval '1 hour');
+INSERT INTO donor_checkouts(id,donor_id,amount_minor,frequency) VALUES ('${checkout}','${donor}',1000,'ONE_TIME');
+INSERT INTO donor_gifts(id,donor_id,checkout_id,stripe_object_id,amount_minor,currency,frequency,paid_at)
+SELECT gen_random_uuid(),'${donor}','${checkout}','atm_${donor}_'||n,1000,'USD','ONE_TIME',timestamptz '2026-01-01 00:00:00+00'+n*interval '1 day' FROM generate_series(1,60) n;
+INSERT INTO donor_metric_projections(id,donor_id,net_minor,computed_at,next_refresh_at) VALUES ('${randomUUID()}','${donor}',60000,now(),now()+interval '1 day');`);
+    }
+    statements.push('COMMIT;');
+    await this.sql(statements.join('\n'));
+    return cookies;
   }
   async cleanup(result) {
     if (this.created) {
