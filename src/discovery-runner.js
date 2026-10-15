@@ -1,24 +1,30 @@
 import path from 'node:path';
+import { modelConfig } from './model-provider.js';
 import { Run, RunError, digest, atomicJSON, redact } from './core.js';
 import { ImpactGraph } from './impactgraph.js';
 import { discover, discoveryProvider, discoveryLimits, discoveryInstructions } from './discovery.js';
 import { openDiscoveryBrowser } from './discovery-browser.js';
 import { discoveryMemory } from './discovery-report.js';
+import { buildApplicationMemory } from './application-memory.js';
+import { sourceReader } from './source-reader.js';
 import { listRuns } from './history.js';
 import { hashPolicy, evidenceRequirements } from './policy.js';
 
 export function discoveryPolicy() {
   const times = { snapshot: 60_000, docker: 30_000, build: 1_800_000, database: 180_000, deploy: 180_000, discovery: 660_000, cleanup: 120_000 };
-  const definition = { schemaVersion: 1, id: 'impactgraph-discovery', version: '1.0.0', adapter: 'impactgraph', scope: 'exploration', checks: Object.entries(times).map(([id, timeoutMs]) => ({ id, required: true, timeoutMs, evidence: evidenceRequirements[id] })), findings: { blockingSeverities: ['unassessed', 'high', 'critical'] }, exceptions: { mode: 'disabled' } };
+  const definition = { schemaVersion: 1, id: 'impactgraph-discovery', version: '1.3.0', adapter: 'impactgraph', scope: 'exploration', checks: Object.entries(times).map(([id, timeoutMs]) => ({ id, required: true, timeoutMs, evidence: evidenceRequirements[id] })), findings: { blockingSeverities: ['unassessed', 'high', 'critical'] }, exceptions: { mode: 'disabled' } };
   const snapshot = { definition, scenarios: [] };
   return { ...snapshot, digest: hashPolicy(snapshot) };
 }
 
-export async function executeDiscovery({ repo, revision = 'HEAD', output = '.atm/runs', model, signal = new AbortController().signal, trigger = 'cli', onCreated = () => {}, provider, adapterFactory = (run, options) => new ImpactGraph(run, options), browserFactory = openDiscoveryBrowser }) {
+export async function executeDiscovery({ repo, revision = 'HEAD', output = '.atm/runs', model, signal = new AbortController().signal, trigger = 'cli', onCreated = () => {}, provider, providerName, maxRequests = discoveryLimits.requests, adapterFactory = (run, options) => new ImpactGraph(run, options), browserFactory = openDiscoveryBrowser }) {
+  if (!Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > discoveryLimits.requests) throw new RunError('Discovery request limit must be 1–40.');
   // Fail before building images when model configuration is absent.
-  const decide = provider ?? discoveryProvider({ apiKey: process.env.OPENAI_API_KEY, model });
+  const decide = provider ?? discoveryProvider({ providerName, model });
+  const config = provider ? { providerName: 'injected-provider', model } : modelConfig({ providerName, model });
+  model = config.model;
   const policy = discoveryPolicy();
-  const run = await Run.create(output, { adapter: 'impactgraph', revision, mode: 'exploration', model, trigger }, policy.definition.checks.map(c => c.id), policy);
+  const run = await Run.create(output, { adapter: 'impactgraph', revision, mode: 'exploration', model, provider: config.providerName, maxRequests, trigger }, policy.definition.checks.map(c => c.id), policy);
   onCreated(run);
   console.log(`Exploration evidence: ${run.dir}`);
   const adapter = adapterFactory(run, { repo, revision, signal });
@@ -42,7 +48,7 @@ export async function executeDiscovery({ repo, revision = 'HEAD', output = '.atm
     if (ready && !signal.aborted) await step('discovery', async result => {
       const { runs, warnings } = await listRuns(output);
       const carried = await discoveryMemory(output, runs, run.data.candidate);
-      const report = { version: 1, runId: run.data.id, revision: run.data.candidate.revision, source: run.data.candidate.source, model: model ?? 'injected-provider', promptSha256: digest(discoveryInstructions), limits: discoveryLimits, startedAt: new Date().toISOString(), status: 'running', summary: '', requests: 0, tokens: 0, pages: [], investigations: [], observations: [], events: [], findings: [], memory: carried.memory, warnings: [...warnings, ...carried.warnings] };
+      const report = { version: 1, contractVersion: 1, runId: run.data.id, revision: run.data.candidate.revision, source: run.data.candidate.source, model: model ?? 'injected-provider', provider: config.providerName, promptSha256: digest(discoveryInstructions), limits: { ...discoveryLimits, requests: maxRequests }, startedAt: new Date().toISOString(), status: 'running', summary: '', requests: 0, tokens: 0, pages: [], investigations: [], observations: [], events: [], findings: [], memory: carried.memory, warnings: [...warnings, ...carried.warnings] };
       const update = async () => {
         // Redact string values before serializing, so hostile page text such as
         // "Cookie: ..." cannot make a JSON report syntactically invalid.
@@ -51,16 +57,30 @@ export async function executeDiscovery({ repo, revision = 'HEAD', output = '.atm
         const reference = await run.reference('evidence/discovery.json');
         result.evidence = result.evidence.filter(e => e.path !== reference.path);
         result.evidence.push(reference);
+        const regressions = { schemaVersion: 1, revision: report.revision, source: report.source, candidates: report.findings.filter(f => f.status === 'reproduced').map(f => ({ findingId: f.id, title: f.title, needsReview: true, plan: f.plan, contractCheck: f.contractCheck, expectation: { expectation: f.expectation, text: f.text, ...f.assertion }, reproduction: f.reproduction })) };
+        result.evidence = result.evidence.filter(e => e.path !== 'evidence/discovery-regressions.json');
+        await atomicJSON(path.join(run.dir, 'evidence/discovery-regressions.json'), JSON.parse(JSON.stringify(regressions, (_key, value) => typeof value === 'string' ? redact(value) : value)));
+        result.evidence.push(await run.reference('evidence/discovery-regressions.json'));
         await run.save();
       };
       let browser;
       try {
         await update();
         const actors = await adapter.discoveryFixture();
+        const source = adapter.source ? await sourceReader(adapter.source) : undefined;
+        const knowledge = await buildApplicationMemory({ root: output, runs, candidate: run.data.candidate, source, actors, signal: adapter.signal });
+        report.applicationMemory = knowledge.overview;
+        report.warnings.push(...knowledge.index.warnings);
+        await atomicJSON(path.join(run.dir, 'evidence/application-memory.json'), JSON.parse(JSON.stringify(knowledge.index, (_key, value) => typeof value === 'string' ? redact(value) : value)));
+        result.evidence.push(await run.reference('evidence/application-memory.json'));
+        const fixture = adapter.discoveryReplayFixture ? await adapter.discoveryReplayFixture() : undefined;
+        report.sourceContext = { changedFiles: (run.data.candidate.changedFiles ?? []).slice(0, 40), inventoryCount: source?.inventory.length ?? 0, initialFiles: source?.inventory.slice(0, 40) ?? [] };
+        report.sourceInventory = source?.inventory ?? [];
+        report.capabilities = { sourceInspection: Boolean(source), persistedState: Boolean(fixture?.inspect), cleanFixtureReplay: Boolean(fixture?.replay) };
         report.actors = actors.map(({ id, description, entry }) => ({ id, description, entry }));
         const explorationSignal = AbortSignal.any([adapter.signal, AbortSignal.timeout(discoveryLimits.durationMs)]);
-        browser = await browserFactory({ origin: adapter.publicOrigin, actors, signal: explorationSignal, run, result });
-        await discover({ provider: decide, browser, report, memory: carried.memory, signal: explorationSignal, onUpdate: update });
+        browser = await browserFactory({ origin: adapter.publicOrigin, actors, signal: explorationSignal, run, result, fixture });
+        await discover({ provider: decide, browser, report, source, knowledge, memory: carried.memory, maxRequests, signal: explorationSignal, onUpdate: update });
       } catch (error) {
         report.status = signal.aborted ? 'canceled' : 'inconclusive';
         report.summary = error.message;

@@ -1,3 +1,4 @@
+import { modelConfig } from './model-provider.js';
 import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, unlink, open, lstat, realpath } from 'node:fs/promises';
@@ -39,8 +40,9 @@ async function jsonBody(request) {
 }
 
 export class Dashboard {
-  constructor({ repo, root = '.atm/runs', executor = executeRun, explorer = executeDiscovery, resolve = resolveRevision, model = process.env.ATM_MODEL, policy }) {
-    this.repo = path.resolve(repo); this.root = path.resolve(root); this.model = model;
+  constructor({ repo, root = '.atm/runs', executor = executeRun, explorer = executeDiscovery, resolve = resolveRevision, model = process.env.ATM_MODEL, providerName = process.env.ATM_PROVIDER ?? 'openai', policy }) {
+    this.repo = path.resolve(repo); this.root = path.resolve(root); this.model = model; this.providerName = providerName;
+    modelConfig({ providerName, model });
     this.executor = executor; this.explorer = explorer; this.resolve = resolve;
     this.policyFile = policy;
     this.active = null; this.state = { watch: { enabled: false, revision: 'HEAD', lastRevision: null }, triage: {} };
@@ -86,7 +88,7 @@ export class Dashboard {
   async snapshot() {
     const { runs, warnings } = await this.history();
     const findings = await collectFindings(this.root, runs, this.state.triage);
-    return { project: { name: path.basename(this.repo), repo: this.repo, profile: 'ImpactGraph · local acceptance', policy: { id: this.policy.definition.id, version: this.policy.definition.version, digest: this.policy.digest }, aiConfigured: Boolean(process.env.OPENAI_API_KEY && this.model), model: this.model ?? null },
+    return { project: { name: path.basename(this.repo), repo: this.repo, profile: 'ImpactGraph · local acceptance', policy: { id: this.policy.definition.id, version: this.policy.definition.version, digest: this.policy.digest }, aiConfigured: modelConfig({ providerName: this.providerName, model: this.model }).configured, provider: this.providerName, model: this.model ?? null },
       runs: runs.map(run => summarize(run, this.active?.id)), findings, warnings,
       latestRelease: runs[0] ? await assessRelease(this.root, runs[0]) : null,
       active: this.active ? { id: this.active.id, revision: this.active.revision, cancelRequested: this.active.controller.signal.aborted } : null,
@@ -97,7 +99,7 @@ export class Dashboard {
     if (typeof ai !== 'boolean' || typeof requireAI !== 'boolean') throw new HttpError(400, 'Invalid AI options.');
     if (!['validation', 'exploration'].includes(mode)) throw new HttpError(400, 'Invalid run mode.');
     if (mode === 'exploration' && (ai || requireAI)) throw new HttpError(400, 'Discovery does not use predefined AI journeys.');
-    if ((ai || requireAI || mode === 'exploration') && (!process.env.OPENAI_API_KEY || !this.model)) throw new HttpError(400, 'Configure OPENAI_API_KEY and ATM_MODEL on the dashboard process first.');
+    if ((ai || requireAI || mode === 'exploration') && !modelConfig({ providerName: this.providerName, model: this.model }).configured) throw new HttpError(400, `Configure ${modelConfig({ providerName: this.providerName }).keyVariable} and ATM_MODEL on the dashboard process first.`);
     this.starting = true;
     try {
       const sha = await this.resolve(this.repo, revision);
@@ -108,7 +110,7 @@ export class Dashboard {
       this.lastLaunchError = null;
       let created;
       const ready = new Promise(resolve => { created = resolve; });
-      active.completion = Promise.resolve().then(() => (mode === 'exploration' ? this.explorer : this.executor)({ repo: this.repo, revision: sha, output: this.root, policy: this.policyFile, ai, requireAI, model: this.model, trigger, signal: controller.signal, onCreated: run => { active.id = run.data.id; created(); } }))
+      active.completion = Promise.resolve().then(() => (mode === 'exploration' ? this.explorer : this.executor)({ repo: this.repo, revision: sha, output: this.root, policy: this.policyFile, ai, requireAI, model: this.model, providerName: this.providerName, trigger, signal: controller.signal, onCreated: run => { active.id = run.data.id; created(); } }))
         .catch(error => { this.lastLaunchError = redact(error.message); })
         .finally(() => { if (this.active === active) this.active = null; created(); });
       await ready;

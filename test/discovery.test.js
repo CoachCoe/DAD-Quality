@@ -12,13 +12,13 @@ import { Run } from '../src/core.js';
 import { collectFindings } from '../src/history.js';
 
 const signal = new AbortController().signal;
-const action = (kind, fields = {}) => ({ action: kind, target: '', value: '', title: '', reason: 'Investigate observed behavior', expectation: '', text: '', ...fields });
+const action = (kind, fields = {}) => ({ action: kind, target: '', value: kind === 'investigate' ? JSON.stringify({ capability: 'Observed feature', behavior: 'Investigate behavior', state: 'Initial state', preconditions: 'Supplied fixture', expected: 'UI matches its promise', basis: 'observed', references: [], checks: [{ id: 'reload', kind: 'action', action: 'reload', actor: 'guest', target: '', value: '' }, { id: 'welcome', kind: 'assertion', expectation: 'text_absent', actor: 'guest', target: '', value: '', text: 'Welcome', baseline: '' }] }) : '', title: '', reason: 'Investigate observed behavior', expectation: '', text: '', ...fields });
 const observation = { id: 'o1', actor: 'guest', path: '/', text: 'Welcome', textTruncated: false, serverErrors: [], pageErrors: [] };
 const blank = () => ({ status: 'running', requests: 0, tokens: 0, pages: [], events: [], observations: [], investigations: [], findings: [], memory: [] });
 const fakeBrowser = () => ({ observe: async () => observation, pages: () => [{ path: '/', title: 'Home', visitedBy: ['guest'] }], act: async () => {}, reproduce: async () => ({ status: 'reproduced', observation }) });
 
 test('discovery chooses goals through decisions, rejects unsupported reports and never treats finish as release approval', async () => {
-  const decisions = [action('finish'), action('investigate', { title: 'Understand the home page' }), action('report', { title: 'Missing welcome', expectation: 'text_present', text: 'Welcome' }), action('reload'), action('report', { title: 'Unexpected welcome', expectation: 'text_absent', text: 'Welcome' }), action('finish')];
+  const decisions = [action('finish'), action('investigate', { title: 'Understand the home page' }), action('report', { title: 'Missing welcome', expectation: 'text_present', text: 'Welcome' }), action('reload'), action('verify', { target: 'welcome' }), action('report_check', { title: 'Unexpected welcome', target: 'welcome' }), action('conclude', { value: 'refuted' }), action('finish')];
   const report = blank();
   await discover({ provider: async input => { assert.equal(Object.hasOwn(input, 'goal'), false); return { action: decisions.shift(), tokens: 20 }; }, browser: fakeBrowser(), report, signal });
   assert.equal(report.status, 'completed'); assert.equal(report.findings.length, 1);
@@ -131,4 +131,17 @@ test('changed screenshots invalidate discovery findings and carried memory even 
   assert.equal((await collectFindings(root, [run.data])).length, 0);
   const carried = await discoveryMemory(root, [run.data], run.data.candidate);
   assert.equal(carried.memory.length, 0); assert.equal(carried.warnings.length, 1);
+});
+
+test('invalid request caps fail before provisioning or provider configuration', async () => {
+  for (const maxRequests of [0, -1, 41, 1.5, NaN]) await assert.rejects(executeDiscovery({ maxRequests }), /request limit/);
+});
+
+test('provider rejection usage is accounted and unknown usage stays explicit', async () => {
+  for (const known of [false, true]) {
+    const report = blank();
+    await discover({ report, browser: fakeBrowser(), signal, provider: async () => { throw Object.assign(new Error('Invalid model action.'), known ? { tokens: 29 } : {}); } });
+    assert.equal(report.status, 'inconclusive'); assert.equal(report.requests, 1);
+    assert.equal(report.tokens, known ? 29 : 0); assert.equal(Boolean(report.usageIncomplete), !known);
+  }
 });

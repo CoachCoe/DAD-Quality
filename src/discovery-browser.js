@@ -7,12 +7,14 @@ const clean = value => redact(String(value)).slice(0, 12_000);
 // Evaluated in the page for both observation and execution. Inputs often have
 // no textContent, so labels, names and destinations are part of their identity.
 const controlIdentity = el => JSON.stringify([el.tagName, el.getAttribute('type'), el.getAttribute('role'), el.getAttribute('aria-label'), el.getAttribute('name'), el.getAttribute('id'), el.getAttribute('placeholder'), el.getAttribute('href'), [...(el.labels ?? [])].map(label => label.textContent?.trim()), el.textContent?.trim().slice(0, 120)]);
-export async function openDiscoveryBrowser({ origin, actors, signal, run, result }) {
+export async function openDiscoveryBrowser({ origin, actors, signal, run, result, fixture }) {
   const permitted = new URL(origin);
   if (permitted.protocol !== 'http:' || !['localhost', '127.0.0.1'].includes(permitted.hostname) || !permitted.port || permitted.pathname !== '/' || permitted.username || permitted.password) throw new Error('Discovery requires a run-owned loopback origin.');
-  let session, page, segment = 0;
+  let session, page, segment = 0, reproductionNumber = 0;
   const blocked = [];
   const known = new Map();
+  const replayTrail = [];
+  let replayUnavailable = false;
   let controls = new Map(), actor = actors[0], trail = [], dirty = false, sequence = 0, lastObservation;
   let serverErrors = [], pageErrors = [];
   const relative = raw => { const u = new URL(raw, origin); return clean(`${u.pathname}${u.search}${u.hash}`); };
@@ -82,6 +84,7 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
     const rawText = await target.locator('body').innerText({ timeout: 5000 });
     const id = `o${++sequence}`;
     const observation = { id, actor: who.id, path: relative(target.url()), text: clean(rawText).slice(0, 8000), textTruncated: rawText.length > 8000, serverErrors: structuredClone(currentErrors.server), pageErrors: structuredClone(currentErrors.page) };
+    if (fixture?.inspect) observation.state = await fixture.inspect();
     if (save && run) {
       const name = `discovery-${id}.png`;
       await target.screenshot({ path: path.join(run.dir, 'evidence', name), fullPage: false, timeout: 5000 });
@@ -90,6 +93,19 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
     }
     return observation;
   }
+  const matchingFields = async (target, templates) => {
+    const handles = await target.locator('input:not([type=password]):not([type=file]),textarea,select').elementHandles();
+    const live = [];
+    for (const handle of handles.slice(0, 200)) if (await handle.isVisible()) live.push({ handle, identity: await handle.evaluate(controlIdentity) });
+    const captured = [];
+    for (const template of templates) {
+      const matches = live.filter(item => item.identity === template.identity);
+      if (matches.length !== 1) continue;
+      const handle = matches[0].handle;
+      captured.push({ id: template.id, label: template.label, identity: template.identity, value: await handle.inputValue(), checked: await handle.evaluate(el => ['checkbox', 'radio'].includes(el.type) ? el.checked : undefined) });
+    }
+    return captured;
+  };
   const perform = async (target, spec) => {
     if (spec.action === 'navigate') { await target.goto(spec.url, { timeout: 10000 }); return; }
     if (spec.action === 'reload') { await target.reload({ timeout: 10000 }); return; }
@@ -109,6 +125,7 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
     pages: () => structuredClone([...known.values()].map(({ url: _url, ...item }) => item)),
     async observe() {
       signal.throwIfAborted();
+      if (replayUnavailable) throw new Error('Fixture replay or restoration failed; exploration cannot continue.');
       const current = recordURL(page.url(), await page.title());
       if (current && !current.visitedBy.includes(actor.id)) current.visitedBy.push(actor.id);
       const observation = await evidence(page, actor, errors, true);
@@ -125,14 +142,14 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
             parts.unshift(`${current.tagName.toLowerCase()}:nth-of-type(${siblings.indexOf(current) + 1})`);
             current = current.parentElement;
           }
-          return { selector: parts.join(' > '), tag: el.tagName.toLowerCase(), type: el.getAttribute('type') ?? '', label: (el.getAttribute('aria-label') || el.labels?.[0]?.innerText || el.innerText || el.getAttribute('placeholder') || el.getAttribute('name') || '').slice(0, 180), value: el.type === 'password' ? '[hidden]' : String(el.value ?? '').slice(0, 300), href: el.tagName === 'A' ? el.href : null, newWindow: el.tagName === 'A' && el.target && el.target !== '_self', options: el.tagName === 'SELECT' ? [...el.options].slice(0, 20).map(o => o.label) : undefined };
+          return { selector: parts.join(' > '), tag: el.tagName.toLowerCase(), type: el.getAttribute('type') ?? '', label: (el.getAttribute('aria-label') || el.labels?.[0]?.innerText || el.innerText || el.getAttribute('placeholder') || el.getAttribute('name') || '').slice(0, 180), checked: ['checkbox', 'radio'].includes(el.type) ? el.checked : undefined, value: el.type === 'password' ? '[hidden]' : String(el.value ?? '').slice(0, 300), href: el.tagName === 'A' ? el.href : null, newWindow: el.tagName === 'A' && el.target && el.target !== '_self', options: el.tagName === 'SELECT' ? [...el.options].slice(0, 20).map(o => o.label) : undefined };
         });
         if (info.newWindow || info.type === 'password' || info.type === 'file') continue;
         info.identity = await handle.evaluate(controlIdentity);
         const id = `c${visible.length + 1}`;
         controls.set(id, info);
         const link = info.href ? recordURL(info.href, info.label) : null;
-        visible.push({ id, tag: info.tag, type: info.type, label: clean(info.label), value: clean(info.value), options: info.options, page: link?.id ?? null });
+        visible.push({ id, tag: info.tag, type: info.type, label: clean(info.label), value: clean(info.value), checked: info.checked, identity: info.identity, options: info.options, page: link?.id ?? null });
       }
       observation.controls = visible;
       observation.actors = actors.map(({ id, description }) => ({ id, description }));
@@ -140,11 +157,19 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
       lastObservation = structuredClone(observation);
       return observation;
     },
+    async checkpoint(name, observation) {
+      if (replayUnavailable || observation?.id !== lastObservation?.id || observation.actor !== actor.id) throw new Error('Checkpoint requires the current captured observation.');
+      const marker = { action: 'checkpoint', name, actor: actor.id, controls: (observation.controls ?? []).filter(c => ['input', 'textarea', 'select'].includes(c.tag)).map(({ id, label, identity }) => ({ id, label, identity })) };
+      replayTrail.push(marker); trail.push(marker);
+    },
     async act(action) {
       signal.throwIfAborted();
+      if (replayUnavailable) throw new Error('Fixture restoration failed; stop this exploration.');
+      if (action.action === 'inspect_state') { if (!fixture?.inspect) throw new Error('Persisted state verifier is unavailable.'); return; }
       if (action.action === 'switch_actor') {
         const who = actors.find(a => a.id === action.target);
         if (!who) throw new Error('Unknown actor.');
+        replayTrail.push({ action: 'switch_actor', actor: who.id });
         await start(who); return;
       }
       let spec = { action: action.action, value: action.value };
@@ -161,41 +186,107 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
       resetErrors();
       // Include failed/partially executed actions in reproduction; never pretend
       // the subsequent state was reached through a shorter successful sequence.
-      trail.push(spec);
+      trail.push(spec); replayTrail.push(spec);
       await perform(page, spec);
       await settle(page);
     },
     async reproduce(action, original = lastObservation) {
-      const steps = structuredClone(trail);
+      const steps = structuredClone(fixture?.replay ? replayTrail : trail);
       const expectedPath = original?.path;
       const originalErrors = { server: original?.serverErrors ?? [], page: original?.pageErrors ?? [] };
-      const base = { actor: actor.id, entry: actor.entry ?? '/', steps, status: 'inconclusive' };
+      const base = { actor: actor.id, entry: (fixture?.replay ? actors[0] : actor).entry ?? '/', steps, status: 'inconclusive', cleanFixture: Boolean(fixture?.replay) };
       if (!original || original.actor !== actor.id) return { ...base, reason: 'No matching original observation; mismatch is not verified.' };
-      if (dirty) return { ...base, reason: 'Application received a mutation. Automatic replay requires a pristine fixture and is deferred; no mutation was repeated.' };
-      if (steps.length > discoveryLimits.replayActions) return { ...base, reason: 'Replay action budget exceeded.' };
-      const replay = await openBrowser([origin], { readOnly: true, signal });
+      if (replayUnavailable) return { ...base, reason: 'Fixture restoration previously failed.' };
+      if (dirty && !fixture?.replay) return { ...base, reason: 'Application received a mutation. Automatic replay requires a pristine fixture; no mutation was repeated.' };
+      if (steps.filter(s => s.action !== 'checkpoint').length > discoveryLimits.replayActions) return { ...base, reason: 'Replay action budget exceeded.' };
+      const originalURL = page.url();
+      // Quiesce the live page before the adapter stops services and swaps data.
+      let restore;
+      if (fixture?.replay) {
+        await page.close();
+        try { restore = await fixture.replay(); }
+        catch (error) { replayUnavailable = true; throw error; }
+      }
+      let replay;
+      let replaySegment = 0;
+      const replayBlocked = [];
+      const reproductionId = ++reproductionNumber;
+      const startReplay = async () => {
+        replay = await openBrowser([origin], { readOnly: !fixture?.replay, signal });
+        if (run) await replay.context.tracing.start({ screenshots: true, snapshots: true, sources: false });
+        replaySegment++;
+      };
+      const closeReplay = async () => {
+        if (!replay) return;
+        const current = replay; replay = null;
+        replayBlocked.push(...current.blocked); blocked.push(...current.blocked);
+        try {
+          if (run) {
+            const name = `discovery-replay-${reproductionId}-${replaySegment}.zip`;
+            await current.context.tracing.stop({ path: path.join(run.dir, 'evidence', name) });
+            result.evidence.push(await run.reference(`evidence/${name}`));
+          }
+        } finally { await current.close(); }
+      };
       const replayErrors = { server: [], page: [] };
+      const replayBaselines = Object.create(null);
+      let replayActor = fixture?.replay ? actors[0] : actor;
       try {
-        const target = await replay.newPage();
+        await startReplay();
+        let target = await replay.newPage();
         capture(target, replayErrors);
-        await bootstrap(replay.context, actor);
-        await target.goto(new URL(actor.entry ?? '/', origin).href, { timeout: 10000 });
+        await bootstrap(replay.context, replayActor);
+        await target.goto(new URL(replayActor.entry ?? '/', origin).href, { timeout: 10000 });
         await settle(target);
         for (const spec of steps) {
+          if (spec.action === 'checkpoint') {
+            if (replayActor.id !== spec.actor) return { ...base, reason: 'Replay checkpoint reached a different actor.' };
+            const captured = await evidence(target, replayActor, replayErrors, true);
+            captured.controls = await matchingFields(target, spec.controls);
+            replayBaselines[spec.name] = captured;
+            continue;
+          }
           replayErrors.server = []; replayErrors.page = [];
-          await perform(target, spec); await settle(target);
+          if (spec.action === 'switch_actor') {
+            replayActor = actors.find(a => a.id === spec.actor);
+            await closeReplay(); await startReplay();
+            target = await replay.newPage(); capture(target, replayErrors);
+            await bootstrap(replay.context, replayActor);
+            await target.goto(new URL(replayActor.entry ?? '/', origin).href, { timeout: 10000 });
+          } else await perform(target, spec);
+          await settle(target);
         }
-        const observation = await evidence(target, actor, replayErrors, true);
-        const verification = evaluateExpectation(action, observation);
-        if (replay.blocked.length) return { ...base, observation, verification, reason: 'Replay attempted a forbidden request; mismatch is not verified.' };
-        if (observation.path !== expectedPath) return { ...base, observation, verification, reason: 'Replay reached a different page; mismatch is not verified.' };
+        const observation = await evidence(target, replayActor, replayErrors, true);
+        if (['field_value', 'field_checked', 'field_unchanged', 'checkbox_unchanged'].includes(action.expectation)) {
+          const originalControl = original.controls?.find(c => c.id === action.target);
+          if (!originalControl) return { ...base, reason: 'Original field is unavailable.' };
+          observation.controls = await matchingFields(target, [originalControl]);
+          if (observation.controls.length !== 1) return { ...base, reason: 'Replay field is no longer uniquely identifiable.' };
+        }
+        const verification = evaluateExpectation(action, observation, replayBaselines);
+        base.baselines = replayBaselines;
+        if (replayBlocked.length || replay.blocked.length) return { ...base, observation, verification, reason: 'Replay attempted a forbidden request; mismatch is not verified.' };
+        if (observation.actor !== original.actor || observation.path !== expectedPath) return { ...base, observation, verification, reason: 'Replay reached a different page; mismatch is not verified.' };
         if (action.expectation === 'no_server_error' && !observation.serverErrors.some(e => originalErrors.server.some(o => o.path === e.path && o.status === e.status))) return { ...base, observation, verification, reason: 'The same server failure did not recur.' };
         if (action.expectation === 'no_page_error' && !observation.pageErrors.some(e => originalErrors.page.includes(e))) return { ...base, observation, verification, reason: 'The same JavaScript failure did not recur.' };
         return { ...base, observation, verification, status: !verification.evaluable ? 'inconclusive' : verification.passed ? 'not-reproduced' : 'reproduced' };
       } catch (error) { return { ...base, reason: clean(error.message).slice(0, 600) }; }
-      finally { await replay.close(); }
+      finally {
+        try { await closeReplay(); }
+        finally {
+          if (restore) {
+            try {
+              await restore();
+              page = await session.newPage(); capture(page, errors); resetErrors();
+              page.on('request', request => { if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) dirty = true; });
+              await page.goto(originalURL, { timeout: 10000 }); await settle(page);
+            } catch (error) { replayUnavailable = true; throw new Error(`Fixture restoration failed: ${error.message}`); }
+          }
+        }
+      }
     },
     close: closeSession,
+    get fatal() { return replayUnavailable; },
     get blocked() { return [...blocked, ...(session?.blocked ?? [])]; },
   };
 }

@@ -12,7 +12,7 @@ import { Run } from '../src/core.js';
 import { discoveryPolicy } from '../src/discovery-runner.js';
 import { createDashboardServer } from '../src/dashboard.js';
 
-const action = (kind, fields = {}) => ({ action: kind, target: '', value: '', title: '', reason: 'Investigate what the observed interface promises.', expectation: '', text: '', ...fields });
+const action = (kind, fields = {}) => ({ action: kind, target: '', value: kind === 'investigate' ? JSON.stringify({ capability: 'Observed feature', behavior: 'Investigate behavior', state: 'Initial state', preconditions: 'Supplied fixture', expected: 'UI matches its promise', basis: 'observed', references: [], checks: [{ id: 'catalog', kind: 'action', action: 'click', actor: 'guest', target: 'Browse catalog', value: '' }, { id: 'healthy', kind: 'assertion', expectation: 'no_server_error', actor: 'guest', target: '', value: '', text: '', baseline: '' }] }) : '', title: '', reason: 'Investigate what the observed interface promises.', expectation: '', text: '', ...fields });
 const signal = new AbortController().signal;
 async function fixture(t) {
   let mutations = 0;
@@ -138,7 +138,9 @@ test('discovery loop records a defect in real browser evidence and dashboard exp
       const provider = async ({ observation }) => ({ tokens: 10, action: [
         () => action('investigate', { title: 'Explore catalog', reason: 'The observed catalog link promises a browsable destination.' }),
         () => action('click', { target: observation.controls.find(c => c.label === 'Browse catalog').id }),
-        () => action('report', { title: 'Catalog returns server failure', expectation: 'no_server_error' }),
+        () => action('verify', { target: 'healthy' }),
+        () => action('report_check', { title: 'Catalog returns server failure', target: 'healthy' }),
+        () => action('conclude', { value: 'refuted' }),
         () => action('finish', { reason: 'Catalog failure reproduced; other areas remain unexplored.' }),
       ][step++]() });
       await discover({ provider, browser, report, signal });
@@ -158,6 +160,8 @@ test('discovery loop records a defect in real browser evidence and dashboard exp
   await page.getByRole('heading', { name: /Autonomous discovery · completed/ }).waitFor();
   assert.match(await page.locator('#run-detail').innerText(), /Catalog returns server failure · reproduced/);
   assert.match(await page.locator('#run-detail').innerText(), /Not applicable — exploration/);
+  await page.getByText('Declared checks (2/2 executed)', { exact: true }).click();
+  assert.match(await page.locator('#run-detail').innerText(), /healthy · failed/);
   let audit = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag22aa']).analyze();
   assert.deepEqual(audit.violations.map(v => v.id), []);
   await mkdir('.atm/ui', { recursive: true });

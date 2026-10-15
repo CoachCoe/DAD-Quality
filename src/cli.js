@@ -18,7 +18,9 @@ const help = `ATM — local application quality runner
 Options:
   --output DIR      Evidence root (default .atm/runs)
   --policy FILE     Versioned local acceptance policy (default policies/impactgraph-local.json)
-  --ai              Add advisory AI exploration; requires OPENAI_API_KEY and --model/ATM_MODEL
+  --ai              Add advisory AI exploration; requires provider key and --model/ATM_MODEL
+  --provider NAME   openai (default) or tinker; also ATM_PROVIDER
+  --max-requests N  Exploration model request limit, 1–40 (default 40)
   --require-ai      Make AI exploration a required check (implies --ai)
   --help            Show this help
 
@@ -33,7 +35,7 @@ Discovery budget: 40 model requests, 10 minutes, 100,000 accounted tokens (may o
 export async function main(args = process.argv.slice(2)) {
   process.umask(0o077);
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
-    repo: { type: 'string' }, revision: { type: 'string', default: 'HEAD' }, output: { type: 'string', default: '.atm/runs' }, policy: { type: 'string' }, ai: { type: 'boolean', default: false }, 'require-ai': { type: 'boolean', default: false }, model: { type: 'string' }, help: { type: 'boolean', default: false },
+    repo: { type: 'string' }, revision: { type: 'string', default: 'HEAD' }, output: { type: 'string', default: '.atm/runs' }, policy: { type: 'string' }, ai: { type: 'boolean', default: false }, 'require-ai': { type: 'boolean', default: false }, model: { type: 'string' }, provider: { type: 'string' }, 'max-requests': { type: 'string' }, help: { type: 'boolean', default: false },
   } });
   if (values.help || positionals.length === 0) { console.log(help); return 0; }
   if (positionals[0] === 'inspect' && positionals.length === 2) {
@@ -48,6 +50,7 @@ export async function main(args = process.argv.slice(2)) {
   if (!['run', 'explore'].includes(positionals[0]) || positionals.length !== 1 || !values.repo) throw new Error('Use: npm run atm -- run|explore --repo /path/to/ImpactGraph');
   const discovery = positionals[0] === 'explore';
   if (discovery && (values.ai || values['require-ai'] || values.policy)) throw new Error('Explore uses its own discovery contract; omit --ai, --require-ai and --policy.');
+  if (!discovery && values['max-requests'] !== undefined) throw new Error('--max-requests applies only to explore.');
   const ai = values.ai || values['require-ai'];
   const model = values.model ?? process.env.ATM_MODEL;
   const controller = new AbortController();
@@ -55,7 +58,7 @@ export async function main(args = process.argv.slice(2)) {
   process.on('SIGINT', cancel); process.on('SIGTERM', cancel);
   let run;
   try {
-    run = await (discovery ? executeDiscovery : executeRun)({ repo: values.repo, revision: values.revision, output: values.output, policy: values.policy, ai, requireAI: values['require-ai'], model, signal: controller.signal });
+    run = await (discovery ? executeDiscovery : executeRun)({ repo: values.repo, revision: values.revision, output: values.output, policy: values.policy, ai, requireAI: values['require-ai'], model, providerName: values.provider, maxRequests: values['max-requests'] === undefined ? undefined : Number(values['max-requests']), signal: controller.signal });
   } finally {
     process.off('SIGINT', cancel); process.off('SIGTERM', cancel);
   }

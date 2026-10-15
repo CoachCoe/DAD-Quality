@@ -4,9 +4,9 @@ ATM is a local quality workspace for ImpactGraph. Launch isolated acceptance run
 
 **Autonomous discovery:** use **Explore application** in the dashboard or
 `npm run explore -- --repo /path/to/ImpactGraph --revision origin/dev`. The agent
-discovers capabilities and chooses its own investigations, without a predefined
-goal or test sequence. It records hypotheses, attempts independent reproduction,
-and remembers earlier discoveries. This mode skips predefined test suites.
+reads the pinned source and documentation, discovers capabilities in the browser,
+and chooses experiments with executable contracts and checkpoint comparisons without a predefined goal or test sequence. It records hypotheses, attempts independent reproduction,
+and retrieves earlier feature evidence with source-change tracking. This mode skips predefined test suites.
 See [discovery setup, evidence, and limits](docs/discovery.md); a configured model
 and API key are required. Discovery is separate from release acceptance.
 
@@ -105,7 +105,10 @@ The donor fixture seeds an unclaimed account and two hashed one-time links only 
 
 ## Optional AI exploration
 
-Set `OPENAI_API_KEY` in your shell or secret manager and choose an explicit model that supports strict function calling through the Responses API. ATM does not load `.env` files or infer a model. No model calls happen in the default run.
+See [the Inkling validation results](docs/inkling-validation.md) for the first live
+Tinker run and seeded-defect benchmark, including current reliability limits.
+
+Set `ATM_PROVIDER=openai` (default) with `OPENAI_API_KEY`, or `ATM_PROVIDER=tinker` with `TINKER_API_KEY`, and choose an explicit `ATM_MODEL`. OpenAI models must support Responses tool calls; Tinker models must support Messages tool calls. The npm entry points load the optional private `.atm/agent.env` file; shell variables take precedence. No model calls happen in the default validation run. See [Tinker setup](docs/discovery.md#use-thinking-machines-tinker) for Inkling configuration.
 
 ```sh
 npm run atm -- run --repo /path/to/ImpactGraph --ai --model YOUR_MODEL
@@ -115,7 +118,7 @@ The first scenario lets an agent find the donation form from the public home pag
 
 AI is advisory by default. Use `--require-ai` to include it in the local gate. Missing credentials, provider errors, time exhaustion, and action exhaustion produce **inconclusive** results. A rejected completion claim produces **failed**. Advisory failures remain visible but do not change the required-check decision.
 
-Limits: 12 model requests/actions, 180 seconds, 12,000 snapshot characters per observation, and at most 800 output tokens per request. These are resource caps, not a currency budget. Model input includes synthetic public-page content. Requests use `store: false`; consult your provider's account data-retention settings. The API key is never passed to the browser or application containers.
+Limits: 12 model requests/actions, 180 seconds, 12,000 snapshot characters per observation, and at most 800 output tokens per request. These are resource caps, not a currency budget. Model input includes synthetic public-page content. OpenAI requests use `store: false`; Tinker requests use its Messages endpoint. Consult your provider's data-retention settings. The API key is never passed to the browser or application containers.
 
 ## Isolation and evidence
 
@@ -143,13 +146,13 @@ npm run test:browser
 
 To verify the complete dashboard-to-ImpactGraph path, start the dashboard and run `npm run test:live`. This launches a real validation from the browser and waits for its evidence. Screenshots and the acceptance result are saved under `.atm/ui/`. The live test is explicit and is not part of routine CI.
 
-Unit and integration tests exercise versioned policy validation, missing or modified evidence, finding-based acceptance, agreement between CLI and dashboard assessments, donor state invariants, fail-closed decisions, evidence persistence, secret filtering, command failures/timeouts/cancellation, isolation configuration, model-action validation, independent verification, finding deduplication, persistent triage, request protection, and commit-watch behavior. Browser tests cover the dashboard's full interaction flow, responsive layout and automated accessibility checks on the overview, evidence dialog, finding dialog and mobile findings view, including a passing-checks/blocked-acceptance case after evidence modification, plus real request blocking and the exploration loop, without API charges.
+Unit and integration tests exercise source-reader boundaries, structured experiment evidence, typed state assertions, clean-fixture mutation replay and restoration, versioned policy validation, missing or modified evidence, finding-based acceptance, agreement between CLI and dashboard assessments, donor state invariants, fail-closed decisions, evidence persistence, secret filtering, command failures/timeouts/cancellation, isolation configuration, model-action validation, independent verification, finding deduplication, persistent triage, request protection, and commit-watch behavior. Browser tests cover the dashboard's full interaction flow, responsive layout and automated accessibility checks on the overview, evidence dialog, finding dialog and mobile findings view, including a passing-checks/blocked-acceptance case after evidence modification, plus real request blocking and the exploration loop, without API charges.
 
 API implementation references: [OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling), [Playwright BrowserContext](https://playwright.dev/docs/api/class-browsercontext), and [Docker Compose internal networks](https://docs.docker.com/reference/compose-file/networks/).
 
 ## Next increments
 
-- Validate live-model discovery quality on ImpactGraph, then expand staff identity support, independent data assertions, and clean-fixture replay of mutations.
+- Run the live-model discovery benchmark and review discovery quality on ImpactGraph; expand staff identity support and approved state projections beyond donor profiles.
 - Expand deployed acceptance scenarios: role-specific staff permissions, referral attribution, recurring gifts, worker recovery.
 - Add sandbox Stripe and captured-email services with explicit egress rules.
 - Adapt the existing full Playwright suite to deployed targets and ingest structured suite results.

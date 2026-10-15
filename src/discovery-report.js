@@ -34,9 +34,10 @@ export async function discoveryMemory(root, runs, candidate) {
       const report = await readDiscovery(root, prior);
       memory.push({ runId: prior.id, revision: prior.candidate.revision, status: report.status,
         pages: report.pages.slice(0, 25).map(p => ({ path: p.path, title: p.title, visitedBy: p.visitedBy })),
-        investigations: report.investigations.slice(-5).map(i => ({ title: i.title, hypothesis: i.hypothesis.slice(0, 400) })),
+        investigations: report.investigations.slice(-5).map(i => ({ title: i.title, hypothesis: i.hypothesis.slice(0, 400), plan: i.plan, conclusion: i.conclusion })),
         findings: report.findings.slice(0, 5).map(f => ({ title: f.title, path: f.path, status: f.status, expectation: f.expectation, text: f.text })),
         summary: report.summary?.slice(0, 600),
+        unfinished: report.coverage?.experiments.filter(e => ['unfinished', 'blocked'].includes(e.status)).slice(0, 8),
       });
       // Bound carried memory without silently truncating a JSON record.
       if (JSON.stringify(memory).length > 12_000) { memory.pop(); break; }

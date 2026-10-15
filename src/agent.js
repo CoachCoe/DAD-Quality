@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { openBrowser } from './browser.js';
 import { RunError, digest, redact } from './core.js';
+import { modelConfig, requireModelConfig, tinkerToolProvider } from './model-provider.js';
 
 export const scenario = {
   id: 'public-donation-discovery', version: 1,
@@ -64,13 +65,20 @@ export async function explore({ provider, observe, act, verify, signal, maxActio
   throw new RunError('AI scenario exhausted its action budget.');
 }
 
-export async function publicAgent(adapter, result, { model, apiKey, provider }) {
-  const decide = provider ?? openAIProvider({ apiKey, model });
+export function publicProvider({ providerName, apiKey, model, fetchImpl } = {}) {
+  const config = requireModelConfig({ providerName, apiKey, model });
+  if (config.providerName === 'openai') return openAIProvider({ ...config, fetchImpl });
+  const decide = tinkerToolProvider({ ...config, tool, instructions, maxOutputTokens: scenario.maxOutputTokens, validate: validateAction, fetchImpl });
+  return ({ observation, history, signal }) => decide({ input: JSON.stringify({ goal: scenario.goal, observation, history }), signal });
+}
+
+export async function publicAgent(adapter, result, { model, apiKey, provider, providerName }) {
+  const decide = provider ?? publicProvider({ apiKey, model, providerName });
   const signal = AbortSignal.any([adapter.signal, AbortSignal.timeout(scenario.maxDurationMs)]);
   const session = await openBrowser([adapter.publicOrigin], { readOnly: true, signal });
   const page = await session.newPage();
   const events = [];
-  adapter.run.data.agent = { scenario, model, promptSha256: digest(instructions), provider: 'OpenAI Responses API', maxRequests: scenario.maxActions, maxOutputTokensPerRequest: scenario.maxOutputTokens };
+  adapter.run.data.agent = { scenario, model, promptSha256: digest(instructions), provider: provider ? 'injected-provider' : modelConfig({ providerName }).label, maxRequests: scenario.maxActions, maxOutputTokensPerRequest: scenario.maxOutputTokens };
   try {
     await page.goto(adapter.publicOrigin);
     return await explore({

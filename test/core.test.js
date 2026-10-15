@@ -52,3 +52,14 @@ test('run persists failures and verifiable evidence before completion', async t 
   manifest.results[0].evidence[0].path = '../outside-run';
   assert.match((await verifyEvidence(run.dir, manifest))[0], /invalid evidence path/);
 });
+
+test('benchmark and legacy manifests can finish a non-acceptance report without a versioned policy', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'atm-benchmark-report-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const run = await Run.create(root, { mode: 'exploration' }, ['discovery']);
+  await run.step('discovery', async () => ({ status: 'inconclusive', summary: 'Provider unavailable.' }));
+  run.data.release = { scope: 'exploration', status: 'not-applicable', eligible: false, productionAuthorized: false, reasons: ['Benchmark only.'] };
+  await run.finish();
+  assert.match(await readFile(path.join(run.dir, 'report.html'), 'utf8'), /No versioned acceptance policy recorded/);
+  assert.equal(run.data.decision.eligible, false);
+});

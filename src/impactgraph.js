@@ -4,6 +4,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { command } from './process.js';
 import { digest, RunError } from './core.js';
+import { replayFixture } from './discovery-fixture.js';
 
 const POSTGRES = 'postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea';
 const NGINX = 'nginx:1.30.5-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94';
@@ -69,8 +70,9 @@ export class ImpactGraph {
     const archive = path.join(this.run.dir, 'source.tar');
     await command('git', ['archive', '--format=tar', `--output=${archive}`, revision], { cwd: this.repo, signal: this.signal });
     await command('tar', ['-xf', archive, '-C', this.source], { signal: this.signal });
+    const changes = await command('git', ['diff-tree', '--root', '--no-commit-id', '--name-only', '-r', revision], { cwd: this.repo, signal: this.signal });
     const worktree = await command('git', ['status', '--porcelain'], { cwd: this.repo, signal: this.signal });
-    this.run.data.candidate = { revision, sourceArchiveSha256: digest(await readFile(archive)), source: this.sourceIdentity ?? this.repo, excludesWorkingTreeChanges: true, workingTreeDirty: Boolean(worktree.stdout.trim()) };
+    this.run.data.candidate = { revision, sourceArchiveSha256: digest(await readFile(archive)), source: this.sourceIdentity ?? this.repo, changedFiles: changes.stdout.trim().split('\n').filter(Boolean).slice(0, 500), excludesWorkingTreeChanges: true, workingTreeDirty: Boolean(worktree.stdout.trim()) };
     result.evidence.push(await this.run.evidence('candidate.json', JSON.stringify(this.run.data.candidate, null, 2)));
     return { summary: `Archived committed revision ${revision.slice(0, 12)}; working tree and environment files excluded.` };
   }
@@ -188,6 +190,37 @@ INSERT INTO donor_metric_projections(id,donor_id,net_minor,computed_at,next_refr
     statements.push('COMMIT;');
     await this.sql(statements.join('\n'));
     return actors;
+  }
+  async discoveryState() {
+    // Fixed projection for fixture identities: no arbitrary SQL, session tokens or hashes.
+    const { stdout } = await this.sql(`BEGIN READ ONLY;
+SELECT json_object_agg(actor, state) FROM (
+SELECT CASE d.email WHEN 'explorer-a@atm.invalid' THEN 'donor-a' ELSE 'donor-b' END AS actor,
+json_build_object('public_name',d.public_name,'referral_emails',coalesce(p.referral_emails,false),'marketing_emails',coalesce(p.marketing_emails,false),
+'preferences_version',coalesce(p.version,0),'gift_count',(SELECT count(*) FROM donor_gifts g WHERE g.donor_id=d.id),
+'active_sessions',(SELECT count(*) FROM donor_sessions s WHERE s.donor_id=d.id AND s.revoked_at IS NULL AND s.expires_at>now())) AS state
+FROM donors d LEFT JOIN donor_preferences p ON p.donor_id=d.id WHERE d.email IN ('explorer-a@atm.invalid','explorer-b@atm.invalid')
+) fixture;
+ROLLBACK;`);
+    const value = stdout.split('\n').find(line => line.startsWith('{'));
+    if (!value) throw new RunError('Discovery state verifier returned no result.');
+    const raw = JSON.parse(value);
+    return raw;
+  }
+  async discoveryReplayFixture() {
+    if (this.run.data.options.mode !== 'exploration' || !this.created || !/^atm-[0-9]{14}-[a-f0-9]{8}$/.test(this.id)) throw new RunError('Fixture replay requires a run-owned exploration database.');
+    return replayFixture({
+      // Restart the proxy too: Docker can assign new app addresses after a stop.
+      // Its healthcheck must observe the upstream before exploration resumes.
+      stop: () => this.compose(['stop', '--timeout', '10', 'ingress', 'api', 'web']),
+      start: async () => {
+        await this.compose(['up', '-d', '--wait', '--wait-timeout', '90', 'api', 'web']);
+        await this.compose(['up', '-d', '--wait', '--wait-timeout', '90', 'ingress']);
+      },
+      snapshot: async () => (await this.compose(['exec', '-T', 'postgres', 'pg_dump', '-U', 'atm_owner', '-d', 'impactgraph_atm', '--clean', '--if-exists', '--no-owner'], { maxBytes: 32_000_000 })).stdout,
+      restore: data => this.sql(`BEGIN;\n${data}\nCOMMIT;`),
+      inspect: () => this.discoveryState(),
+    });
   }
   async performanceFixture() {
     // Separate from the authentication journeys; no email or payment processor.
