@@ -14,6 +14,7 @@ export function redact(value) {
     .replace(/(postgres(?:ql)?:\/\/[^:\s/]+:)[^@\s]+@/gi, '$1[REDACTED]@')
     .replace(/([?#&](?:token|secret|key|code)=)[^\s&#"']+/gi, '$1[REDACTED]')
     .replace(/\b(?:sk|rk)-(?:proj-)?[A-Za-z0-9_-]{12,}\b/g, '[REDACTED]')
+    .replace(/\b(?:sk|rk|pk)_(?:test|live)_[A-Za-z0-9]+\b|\bwhsec_[A-Za-z0-9]+\b/g, '[REDACTED]')
     .replace(/((?:authorization|cookie|set-cookie)\s*[:=]\s*)[^\r\n]+/gi, '$1[REDACTED]');
 }
 

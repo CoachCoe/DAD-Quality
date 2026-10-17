@@ -120,7 +120,7 @@ export async function collectFindings(root, runs, triage = {}) {
     const saved = triage[finding.id];
     if (saved) Object.assign(finding, saved);
     // A new failure after resolution reopens triage without changing historical results.
-    if (finding.disposition === 'resolved' && finding.lastSeen > (finding.updatedAt ?? '')) finding.disposition = 'reopened';
+    if (['resolved', 'dismissed'].includes(finding.disposition) && finding.lastSeen > (finding.updatedAt ?? '')) finding.disposition = 'reopened';
     const lastRun = runs.find(r => r.id === finding.lastRunId);
     const later = runs.filter(r => r.startedAt > finding.lastSeen && r.candidate?.source === lastRun?.candidate?.source && r.finishedAt && statuses.has(r.decision.status));
     const latestComparable = later.find(r => r.results.some(c => c.id === finding.check && c.finishedAt));

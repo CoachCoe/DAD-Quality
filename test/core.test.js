@@ -25,6 +25,13 @@ test('secrets are redacted from text evidence', () => {
   for (const secret of ['private-password', 'abc-secret', 'Bearer hidden', 'session=hidden', 'sk-proj-abcdefghijklmnop']) assert.equal(output.includes(secret), false);
 });
 
+test('Stripe credentials are redacted from logs and source excerpts', () => {
+  for (const prefix of ['sk_test_', 'sk_live_', 'rk_test_', 'rk_live_', 'pk_test_', 'pk_live_', 'whsec_']) {
+    const credential = `${prefix}synthetic1234567890`;
+    assert.equal(redact(`credential=${credential}; failed`), 'credential=[REDACTED]; failed');
+  }
+});
+
 test('reports escape hostile page content', () => {
   const output = reportHTML({ id: '<img src=x onerror=alert(1)>', startedAt: 'now', results: [{ id: 'browser', status: 'failed', summary: '<script>bad()</script>' }], decision: { status: 'failed', reasons: [] } });
   assert.equal(output.includes('<script>bad()'), false);
