@@ -160,3 +160,10 @@ API implementation references: [OpenAI function calling](https://developers.open
 - Resolve ImpactGraph's build-time origin configuration before same-image staging/production promotion.
 - Add evidence retention, richer finding extraction, PR/staging triggers and an authenticated shared deployment.
 - Add production deployment and recovery automation only after staging evidence and rollback compatibility are established.
+
+## Repository conventions
+
+Working and process notes — session logs, validation records, investigation reports,
+scratch docs — are never tracked. Keep them under the git-ignored `docs/working/`
+directory. Tracked `docs/` holds durable product documentation only (how a mode or gate
+works, policy and performance references, and the like).
