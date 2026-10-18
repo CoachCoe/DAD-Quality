@@ -15,14 +15,14 @@ import { hashPolicy } from '../src/policy.js';
 test('dashboard supports run inspection, triage, launch, cancellation and mobile layout', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-ui-'));
   const failed = await Run.create(root, { adapter: 'impactgraph' }, ['staff-journey']);
-  failed.data.candidate = { revision: 'a'.repeat(40), source: '/synthetic/ImpactGraph' };
+  failed.data.candidate = { revision: 'a'.repeat(40), source: '/synthetic/DAD-Main' };
   await failed.step('staff-journey', async result => { result.evidence.push(await failed.evidence('failure.log', 'Expected unauthorized request to be rejected.')); throw new RunError('Expected 401, received 200.', 'failed'); });
   await failed.finish();
   const passed = await Run.create(root, { adapter: 'impactgraph' }, ['staff-journey']);
-  passed.data.candidate = { revision: 'b'.repeat(40), source: '/synthetic/ImpactGraph' };
+  passed.data.candidate = { revision: 'b'.repeat(40), source: '/synthetic/DAD-Main' };
   await passed.step('staff-journey', async result => { result.evidence.push(await passed.evidence('passed.log', 'Authorization checks passed.')); return { summary: 'Authorization checks passed.' }; });
   await passed.finish();
-  const app = await createDashboardServer({ repo: '/synthetic/ImpactGraph', root, port: 0, resolve: async () => 'c'.repeat(40), executor: async options => {
+  const app = await createDashboardServer({ repo: '/synthetic/DAD-Main', root, port: 0, resolve: async () => 'c'.repeat(40), executor: async options => {
     const run = await Run.create(root, { adapter: 'impactgraph', trigger: options.trigger }, ['cleanup']); options.onCreated(run);
     await new Promise(resolve => options.signal.addEventListener('abort', resolve, { once: true }));
     await run.step('cleanup', async () => ({ summary: 'Cleaned up.' })); run.data.canceledAt = new Date().toISOString(); await run.finish();
@@ -85,7 +85,7 @@ test('dashboard supports run inspection, triage, launch, cancellation and mobile
 
 test('dashboard shows useful empty and malformed-run states', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-ui-empty-'));
-  const app = await createDashboardServer({ repo: '/synthetic/ImpactGraph', root, port: 0 });
+  const app = await createDashboardServer({ repo: '/synthetic/DAD-Main', root, port: 0 });
   const browser = await chromium.launch({ headless: true });
   t.after(async () => { await browser.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
   const page = await browser.newPage();
@@ -104,7 +104,7 @@ test('policy evidence view distinguishes passing checks from blocked acceptance'
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-ui-policy-'));
   const policy = await loadPolicy();
   const run = await Run.create(root, { adapter: 'impactgraph' }, policy.definition.checks.filter(c => c.required).map(c => c.id), policy);
-  run.data.candidate = { revision: 'a'.repeat(40), source: '/synthetic/ImpactGraph', sourceArchiveSha256: 'b'.repeat(64), images: { api: `sha256:${'c'.repeat(64)}`, web: `sha256:${'d'.repeat(64)}` } };
+  run.data.candidate = { revision: 'a'.repeat(40), source: '/synthetic/DAD-Main', sourceArchiveSha256: 'b'.repeat(64), images: { api: `sha256:${'c'.repeat(64)}`, web: `sha256:${'d'.repeat(64)}` } };
   for (const check of policy.definition.checks) {
     const evidence = [];
     for (const name of check.evidence) evidence.push(await run.evidence(name, `Synthetic ${name}`));
@@ -139,14 +139,14 @@ test('performance view compares candidates, remains accessible on mobile and rej
   for (let i = 0; i < 2; i++) {
     const run = await Run.create(root, { adapter: 'impactgraph' }, [], policy);
     run.data.startedAt = `2026-10-0${i + 1}T00:00:00.000Z`;
-    run.data.candidate = { source: '/synthetic/ImpactGraph', revision: (i ? 'b' : 'a').repeat(40) };
+    run.data.candidate = { source: '/synthetic/DAD-Main', revision: (i ? 'b' : 'a').repeat(40) };
     const sample = { ms: i ? 100 : 20, status: 200, error: null };
     const report = { schemaVersion: 1, profile, workloadDigest: hashPolicy(profile), environment, environmentDigest: hashPolicy(environment), completed: true, phases: profile.phases.map(p => ({ ...p, elapsedMs: p.durationMs, capped: false, ...metrics(Array(120).fill(sample), p.durationMs), endpoints: Object.fromEntries(['content', 'dashboard', 'gifts'].map(name => [name, metrics(Array(40).fill(sample), p.durationMs)])) })) };
     report.assessment = assessPerformance(report);
     run.data.results = [{ id: 'performance', status: 'passed', required: false, finishedAt: run.data.startedAt, summary: 'Synthetic performance fixture', evidence: [await run.evidence('performance.json', JSON.stringify(report))] }];
     await run.finish(); latest = run;
   }
-  const app = await createDashboardServer({ repo: '/synthetic/ImpactGraph', root, port: 0 });
+  const app = await createDashboardServer({ repo: '/synthetic/DAD-Main', root, port: 0 });
   const browser = await chromium.launch({ headless: true });
   t.after(async () => { await browser.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1050 } });

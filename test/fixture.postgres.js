@@ -4,13 +4,13 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { ImpactGraph, composeDefinition } from '../src/impactgraph.js';
+import { DadAdapter, composeDefinition } from '../src/dad.js';
 
 // Explicit Docker integration: no published ports, mounts, or existing databases.
 test('PostgreSQL fixture replay restores data and application grants, then restores the working state', async t => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'atm-fixture-postgres-'));
   const id = `atm-20261015000000-${randomUUID().slice(0, 8)}`;
-  const adapter = new ImpactGraph({ dir, data: { id, options: { mode: 'exploration' } } }, { repo: dir, signal: AbortSignal.timeout(120_000) });
+  const adapter = new DadAdapter({ dir, data: { id, options: { mode: 'exploration' } } }, { repo: dir, signal: AbortSignal.timeout(120_000) });
   const config = composeDefinition({ id, port: 43123, password: 'synthetic', apiPassword: 'synthetic', staffPassword: 'synthetic' });
   const image = config.services.postgres.image;
   const proxyImage = config.services.ingress.image;

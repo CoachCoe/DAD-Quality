@@ -15,7 +15,7 @@ async function fixture(t) {
   t.after(() => rm(root, { recursive: true, force: true }));
   const policy = await loadPolicy();
   const run = await Run.create(root, { adapter: 'impactgraph' }, policy.definition.checks.filter(c => c.required).map(c => c.id), policy);
-  run.data.candidate = { revision: 'a'.repeat(40), source: '/synthetic/ImpactGraph', sourceArchiveSha256: 'b'.repeat(64), images: { api: `sha256:${'c'.repeat(64)}`, web: `sha256:${'d'.repeat(64)}` } };
+  run.data.candidate = { revision: 'a'.repeat(40), source: '/synthetic/DAD-Main', sourceArchiveSha256: 'b'.repeat(64), images: { api: `sha256:${'c'.repeat(64)}`, web: `sha256:${'d'.repeat(64)}` } };
   for (const check of policy.definition.checks) {
     const evidence = [];
     for (const name of check.evidence) evidence.push(await run.evidence(name, `Synthetic ${name}`));

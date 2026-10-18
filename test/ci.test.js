@@ -9,7 +9,7 @@ import { loadPolicy } from '../src/policy.js';
 import { assessRelease } from '../src/release.js';
 import { emptyLedger, validateLedger, prepareProposal, publishProposal, decryptBundle, extractBundle, mergeFindings } from '../src/ci.js';
 
-const source = 'github:example/ImpactGraph', revision = 'a'.repeat(40);
+const source = 'github:example/DAD-Main', revision = 'a'.repeat(40);
 const keys = generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-ci-'));

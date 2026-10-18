@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { modelConfig } from './model-provider.js';
 import { Run, RunError } from './core.js';
-import { ImpactGraph } from './impactgraph.js';
+import { DadAdapter } from './dad.js';
 import { staffJourney, donorClaimJourney } from './browser.js';
 import { publicAgent } from './agent.js';
 import { loadPolicy } from './policy.js';
@@ -18,7 +18,7 @@ export async function executeRun({ repo, revision = 'HEAD', sourceIdentity, outp
   const run = await Run.create(output, { adapter: 'impactgraph', revision, ai: checks.some(c => c.id === 'ai-public-journey'), model, provider: config.providerName, trigger }, required, policy);
   onCreated(run);
   console.log(`Evidence: ${run.dir}`);
-  const adapter = new ImpactGraph(run, { repo, revision, sourceIdentity, signal });
+  const adapter = new DadAdapter(run, { repo, revision, sourceIdentity, signal });
   const step = async (id, action) => {
     const check = checks.find(c => c.id === id);
     if (!check) return true;

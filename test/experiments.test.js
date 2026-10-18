@@ -7,7 +7,7 @@ import { sourceReader } from '../src/source-reader.js';
 import { experimentPlan } from '../src/experiments.js';
 import { discover, evaluateExpectation } from '../src/discovery.js';
 import { replayFixture } from '../src/discovery-fixture.js';
-import { ImpactGraph } from '../src/impactgraph.js';
+import { DadAdapter } from '../src/dad.js';
 import { benchmarkMetrics } from '../src/discovery-benchmark.js';
 
 const action = (kind, fields = {}) => ({ action: kind, target: '', value: '', title: '', reason: 'Check observed behavior', expectation: '', text: '', ...fields });
@@ -68,8 +68,8 @@ test('clean fixture replay restores current state on success and on failed basel
   assert.equal(state.name, 'working'); assert.equal(stopped, false);
 });
 
-test('ImpactGraph verifier selects only synthetic identities and replay refuses other database contexts', async () => {
-  const adapter = new ImpactGraph({ data: { id: 'unsafe', options: {} }, dir: '/tmp/fixture' }, { repo: '/app' });
+test('DAD adapter verifier selects only synthetic identities and replay refuses other database contexts', async () => {
+  const adapter = new DadAdapter({ data: { id: 'unsafe', options: {} }, dir: '/tmp/fixture' }, { repo: '/app' });
   adapter.sql = async sql => { assert.match(sql, /^BEGIN READ ONLY;/); assert.match(sql, /explorer-a@atm.invalid/); assert.doesNotMatch(sql, /token_hash/); return { stdout: '{"donor-a":{"public_name":null}}' }; };
   assert.equal((await adapter.discoveryState())['donor-a'].public_name, null);
   await assert.rejects(adapter.discoveryReplayFixture(), /run-owned/);

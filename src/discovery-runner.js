@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { modelConfig } from './model-provider.js';
 import { Run, RunError, digest, atomicJSON, redact } from './core.js';
-import { ImpactGraph } from './impactgraph.js';
+import { DadAdapter } from './dad.js';
 import { discover, discoveryProvider, discoveryLimits, discoveryInstructions } from './discovery.js';
 import { openDiscoveryBrowser } from './discovery-browser.js';
 import { discoveryMemory } from './discovery-report.js';
@@ -17,7 +17,7 @@ export function discoveryPolicy() {
   return { ...snapshot, digest: hashPolicy(snapshot) };
 }
 
-export async function executeDiscovery({ repo, revision = 'HEAD', output = '.atm/runs', model, signal = new AbortController().signal, trigger = 'cli', onCreated = () => {}, provider, providerName, maxRequests = discoveryLimits.requests, adapterFactory = (run, options) => new ImpactGraph(run, options), browserFactory = openDiscoveryBrowser }) {
+export async function executeDiscovery({ repo, revision = 'HEAD', output = '.atm/runs', model, signal = new AbortController().signal, trigger = 'cli', onCreated = () => {}, provider, providerName, maxRequests = discoveryLimits.requests, adapterFactory = (run, options) => new DadAdapter(run, options), browserFactory = openDiscoveryBrowser }) {
   if (!Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > discoveryLimits.requests) throw new RunError('Discovery request limit must be 1–40.');
   // Fail before building images when model configuration is absent.
   const decide = provider ?? discoveryProvider({ providerName, model });

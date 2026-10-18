@@ -17,7 +17,7 @@ async function directory(t) {
 export async function fixture(root, { status = 'failed', startedAt = '2026-10-09T12:00:00.000Z', summary = 'Expected authorization rejection.', log = '--- FAIL: TestAuthorization (0.03s)\nExpected 403, received 200' } = {}) {
   const run = await Run.create(root, { adapter: 'impactgraph', trigger: 'fixture' }, ['api-tests']);
   run.data.startedAt = startedAt;
-  run.data.candidate = { revision: SHA, source: '/synthetic/ImpactGraph' };
+  run.data.candidate = { revision: SHA, source: '/synthetic/DAD-Main' };
   await run.step('api-tests', async result => { result.evidence.push(await run.evidence('api-tests.log', log)); if (status !== 'passed') throw new RunError(summary, status); });
   await run.finish();
   return run;
@@ -45,7 +45,7 @@ test('failure fingerprints ignore ephemeral host ports and run IDs', () => {
 
 test('dashboard rejects cross-origin writes, forged hosts, and invalid revisions', async t => {
   const root = await directory(t);
-  const app = await createDashboardServer({ repo: '/synthetic/ImpactGraph', root, port: 0 });
+  const app = await createDashboardServer({ repo: '/synthetic/DAD-Main', root, port: 0 });
   t.after(app.close);
   const snapshot = await (await fetch(`${app.origin}/api/state`)).json();
   assert.equal((await fetch(`${app.origin}/api/runs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 403);
@@ -59,7 +59,7 @@ test('dashboard rejects cross-origin writes, forged hosts, and invalid revisions
 
 test('run control pins revision, rejects concurrent launches and cancels through the runner', async t => {
   const root = await directory(t); let received;
-  const app = await createDashboardServer({ repo: '/synthetic/ImpactGraph', root, port: 0, resolve: async () => SHA, executor: async options => {
+  const app = await createDashboardServer({ repo: '/synthetic/DAD-Main', root, port: 0, resolve: async () => SHA, executor: async options => {
     received = options;
     const run = await Run.create(root, {}, ['cleanup']); options.onCreated(run);
     await new Promise(resolve => options.signal.addEventListener('abort', resolve, { once: true }));
@@ -71,7 +71,7 @@ test('run control pins revision, rejects concurrent launches and cancels through
   const headers = { Origin: app.origin, 'X-ATM-Token': state.csrf, 'Content-Type': 'application/json' };
   const response = await fetch(`${app.origin}/api/runs`, { method: 'POST', headers, body: JSON.stringify({ revision: 'main', repo: '/ignored-other-repo' }) });
   assert.equal(response.status, 202); const launched = await response.json();
-  assert.equal(received.revision, SHA); assert.equal(received.repo, '/synthetic/ImpactGraph');
+  assert.equal(received.revision, SHA); assert.equal(received.repo, '/synthetic/DAD-Main');
   assert.equal((await fetch(`${app.origin}/api/runs`, { method: 'POST', headers, body: '{}' })).status, 409);
   const completion = app.dashboard.active.completion;
   assert.equal((await fetch(`${app.origin}/api/runs/${launched.id}/cancel`, { method: 'POST', headers, body: '{}' })).status, 202);
@@ -82,7 +82,7 @@ test('run control pins revision, rejects concurrent launches and cancels through
 
 test('triage persists across restarts and evidence route serves only listed regular files', async t => {
   const root = await directory(t); const run = await fixture(root);
-  let app = await createDashboardServer({ repo: '/synthetic/ImpactGraph', root, port: 0 });
+  let app = await createDashboardServer({ repo: '/synthetic/DAD-Main', root, port: 0 });
   let state = await (await fetch(`${app.origin}/api/state`)).json();
   const id = state.findings[0].id;
   const headers = { Origin: app.origin, 'X-ATM-Token': state.csrf, 'Content-Type': 'application/json' };
@@ -92,7 +92,7 @@ test('triage persists across restarts and evidence route serves only listed regu
   assert.equal((await fetch(`${app.origin}/evidence/${run.data.id}/api-tests.log`)).status, 200);
   const original = await readFile(path.join(run.dir, 'run.json'), 'utf8');
   await app.close();
-  app = await createDashboardServer({ repo: '/synthetic/ImpactGraph', root, port: 0 }); t.after(app.close);
+  app = await createDashboardServer({ repo: '/synthetic/DAD-Main', root, port: 0 }); t.after(app.close);
   state = await (await fetch(`${app.origin}/api/state`)).json();
   assert.equal(state.findings[0].severity, 'high'); assert.equal(state.findings[0].audit.length, 1);
   assert.equal(await readFile(path.join(run.dir, 'run.json'), 'utf8'), original);
@@ -103,7 +103,7 @@ test('triage persists across restarts and evidence route serves only listed regu
 
 test('commit watch baselines current revision, runs only new commits and survives restart', async t => {
   const root = await directory(t); let head = SHA, executions = 0;
-  const options = { repo: '/synthetic/ImpactGraph', root, resolve: async () => head, executor: async options => {
+  const options = { repo: '/synthetic/DAD-Main', root, resolve: async () => head, executor: async options => {
     executions++; const run = await Run.create(root, {}, ['check']); options.onCreated(run); await run.step('check', async () => ({})); await run.finish();
   } };
   let dashboard = new Dashboard(options); await dashboard.initialize();
