@@ -78,7 +78,7 @@ test('timeouts, cancellation, redirects and safety caps do not masquerade as com
 
 test('malformed JSON, wrong payloads and oversized responses count as failed requests', async t => {
   let payload = '{}';
-  const origin = await server(t, (req, res) => res.end(payload));
+  const origin = await server(t, (_req, res) => res.end(payload));
   const options = { origin, cookies, profile: profile(), environment: {} };
   for (const value of ['{}', '<html>not an API</html>', 'x'.repeat(262145)]) {
     payload = value;
@@ -132,7 +132,7 @@ test('advisory failures stay visible without producing blocking findings; requir
 test('dashboard loads only verified performance evidence and matching history', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-perf-history-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const origin = await server(t, (req, res) => res.end(body));
+  const origin = await server(t, (_req, res) => res.end(body));
   const p = profile();
   const report = await measurePerformance({ origin, cookies, profile: p, environment: {} });
   const policy = await loadPolicy(); policy.definition.checks.find(c => c.id === 'performance').profile = p;

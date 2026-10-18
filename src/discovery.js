@@ -168,7 +168,7 @@ export async function discover({ provider, browser, report, memory = [], source,
       } else if (['verify', 'report_check'].includes(action.action)) {
         const check = active?.plan.checks.find(c => c.id === action.target);
         const prior = active?.progress.find(c => c.checkId === action.target);
-        if (!active || check?.kind !== 'assertion' || (action.action === 'verify' ? pendingCheck(active)?.id !== check.id : !prior || prior.verification?.passed !== false)) event.outcome = 'Verify the next declared assertion; report_check requires a previously failed declared check.';
+        if (!active || check?.kind !== 'assertion' || (action.action === 'verify' ? pendingCheck(active)?.id !== check.id : prior?.verification?.passed !== false)) event.outcome = 'Verify the next declared assertion; report_check requires a previously failed declared check.';
         else {
           try {
             const assertion = contractAssertion(check, observation, active);

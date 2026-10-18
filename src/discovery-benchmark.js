@@ -16,7 +16,7 @@ export function saveProfile(actor, name, profiles) {
   return { status: 200 };
 }
 `;
-const escape = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 export async function benchmarkApplication(fault = 'healthy') {
   if (!benchmarkFaults.includes(fault)) throw new Error('Unknown benchmark fault.');
   const seed = () => ({ 'donor-a': { public_name: 'Alex', save_count: 0 }, 'donor-b': { public_name: 'Blair', save_count: 0 } });
@@ -41,7 +41,7 @@ export async function benchmarkApplication(fault = 'healthy') {
       response.end('Saved'); return;
     }
     response.setHeader('Content-Type', 'text/html');
-    response.end(`<!doctype html><html lang="en"><title>Profile</title><body><h1>${actor ? escape(actor) + ' profile' : 'Welcome'}</h1><a href="/profile">Profile</a><p>Names must be nonblank and at most 40 characters. Save persists only your own profile and records one save.</p>${actor ? `<form><label>Public name<input name="public_name" value="${escape(actual[actor].public_name)}"></label><button>Save profile</button></form><p role="status" id="status"></p><script>document.querySelector('form').onsubmit=async e=>{e.preventDefault();const r=await fetch('/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:document.querySelector('input').value})});document.querySelector('#status').textContent=r.ok?'Profile saved.':'Name is invalid.'}</script>` : '<p>Sign in with a supplied synthetic identity to manage a profile.</p>'}</body></html>`);
+    response.end(`<!doctype html><html lang="en"><title>Profile</title><body><h1>${actor ? `${escapeHTML(actor)} profile` : 'Welcome'}</h1><a href="/profile">Profile</a><p>Names must be nonblank and at most 40 characters. Save persists only your own profile and records one save.</p>${actor ? `<form><label>Public name<input name="public_name" value="${escapeHTML(actual[actor].public_name)}"></label><button>Save profile</button></form><p role="status" id="status"></p><script>document.querySelector('form').onsubmit=async e=>{e.preventDefault();const r=await fetch('/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:document.querySelector('input').value})});document.querySelector('#status').textContent=r.ok?'Profile saved.':'Name is invalid.'}</script>` : '<p>Sign in with a supplied synthetic identity to manage a profile.</p>'}</body></html>`);
   });
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const fixture = await replayFixture({

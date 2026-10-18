@@ -164,7 +164,7 @@ test('discovery loop records a defect in real browser evidence and dashboard exp
   assert.match(await page.locator('#run-detail').innerText(), /Not applicable — exploration/);
   await page.getByText('Declared checks (2/2 executed)', { exact: true }).click();
   assert.match(await page.locator('#run-detail').innerText(), /healthy · failed/);
-  let audit = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag22aa']).analyze();
+  const audit = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag22aa']).analyze();
   assert.deepEqual(audit.violations.map(v => v.id), []);
   await mkdir('.atm/ui', { recursive: true });
   await page.screenshot({ path: '.atm/ui/discovery-desktop.png', fullPage: true });

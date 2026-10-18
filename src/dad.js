@@ -51,7 +51,7 @@ export class DadAdapter {
       result.evidence.push(await this.run.evidence(`${label}.log`, output.stdout + output.stderr));
       return output;
     } catch (error) {
-      result.evidence.push(await this.run.evidence(`${label}.log`, (error.stdout ?? '') + (error.stderr ?? '') + '\n' + error.message));
+      result.evidence.push(await this.run.evidence(`${label}.log`, `${error.stdout ?? ''}${error.stderr ?? ''}\n${error.message}`));
       throw error;
     }
   }

@@ -280,7 +280,11 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
               page = await session.newPage(); capture(page, errors); resetErrors();
               page.on('request', request => { if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) dirty = true; });
               await page.goto(originalURL, { timeout: 10000 }); await settle(page);
-            } catch (error) { replayUnavailable = true; throw new Error(`Fixture restoration failed: ${error.message}`); }
+            } catch (error) {
+              replayUnavailable = true;
+              // biome-ignore lint/correctness/noUnsafeFinally: later experiments would run against unknown state, so a failed restoration replaces the replay result.
+              throw new Error(`Fixture restoration failed: ${error.message}`);
+            }
           }
         }
       }

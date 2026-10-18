@@ -53,6 +53,7 @@ export function compareRuns(current, baseline) {
   }), removed: baseline.results.filter(r => !current.results.some(c => c.id === r.id)).map(r => r.id) };
 }
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI color codes begin with ESC.
 const stripANSI = value => value.replace(/\x1b\[[0-9;]*m/g, '');
 export function normalizeFailure(value) {
   return redact(stripANSI(value))

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile, symlink, readFile } from 'node:fs/promises';
+import { mkdtemp, rm, symlink, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { get as httpGet } from 'node:http';

@@ -41,7 +41,7 @@ export function validateContract(checks) {
 export const pendingCheck = investigation => investigation?.plan.checks[investigation.progress.length] ?? null;
 export const baselineKey = (investigation, id) => `${investigation.id}:${id}`;
 export function actionMatches(check, action, observation) {
-  if (!check || check.kind !== 'action' || check.action !== action.action || check.actor !== observation.actor || check.value !== action.value) return false;
+  if (check?.kind !== 'action' || check.action !== action.action || check.actor !== observation.actor || check.value !== action.value) return false;
   let target = '';
   if (['click', 'fill', 'select', 'check'].includes(action.action)) {
     const control = observation.controls?.find(c => c.id === action.target);

@@ -17,7 +17,7 @@ test('source inspection is bounded, literal, cited and excludes secrets, binary 
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-source-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(path.join(root, 'docs')); await mkdir(path.join(root, '.git'));
-  await writeFile(path.join(root, 'docs/profile.md'), 'Names persist\n' + 'safe\n'.repeat(150));
+  await writeFile(path.join(root, 'docs/profile.md'), `Names persist\n${'safe\n'.repeat(150)}`);
   await writeFile(path.join(root, '.env'), 'SECRET=secret'); await writeFile(path.join(root, '.git/config'), 'secret');
   await writeFile(path.join(root, 'binary.js'), Buffer.from([0, 1]));
   await symlink('/etc/passwd', path.join(root, 'escape.js'));

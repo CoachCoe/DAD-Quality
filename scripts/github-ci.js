@@ -12,7 +12,7 @@ const json = async file => JSON.parse(await readFile(file, 'utf8'));
 try {
   if (action === 'init') {
     // Explicit bootstrap only: normal execution never creates missing history.
-    await writeFile(v.state, JSON.stringify(emptyLedger(v.source), null, 2) + '\n', { flag: 'wx', mode: 0o600 });
+    await writeFile(v.state, `${JSON.stringify(emptyLedger(v.source), null, 2)}\n`, { flag: 'wx', mode: 0o600 });
   } else if (action === 'keygen') {
     const keys = generateKeyPairSync('rsa', { modulusLength: 3072, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
     await writeFile(v['private-key'], keys.privateKey, { mode: 0o600, flag: 'wx' });
