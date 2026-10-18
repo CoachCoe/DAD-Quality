@@ -88,7 +88,7 @@ export class Dashboard {
   async snapshot() {
     const { runs, warnings } = await this.history();
     const findings = await collectFindings(this.root, runs, this.state.triage);
-    return { project: { name: path.basename(this.repo), repo: this.repo, profile: 'ImpactGraph · local acceptance', policy: { id: this.policy.definition.id, version: this.policy.definition.version, digest: this.policy.digest }, aiConfigured: modelConfig({ providerName: this.providerName, model: this.model }).configured, provider: this.providerName, model: this.model ?? null },
+    return { project: { name: path.basename(this.repo), repo: this.repo, profile: 'DAD · local acceptance', policy: { id: this.policy.definition.id, version: this.policy.definition.version, digest: this.policy.digest }, aiConfigured: modelConfig({ providerName: this.providerName, model: this.model }).configured, provider: this.providerName, model: this.model ?? null },
       runs: runs.map(run => summarize(run, this.active?.id)), findings, warnings,
       latestRelease: runs[0] ? await assessRelease(this.root, runs[0]) : null,
       active: this.active ? { id: this.active.id, revision: this.active.revision, cancelRequested: this.active.controller.signal.aborted } : null,

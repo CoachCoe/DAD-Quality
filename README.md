@@ -1,9 +1,9 @@
 # ATM — application quality runner
 
-ATM is a local quality workspace for ImpactGraph. Launch isolated acceptance runs, compare candidates, inspect evidence, and triage recurring failures through a browser dashboard or CLI.
+ATM is a local quality workspace for DAD. Launch isolated acceptance runs, compare candidates, inspect evidence, and triage recurring failures through a browser dashboard or CLI.
 
 **Autonomous discovery:** use **Explore application** in the dashboard or
-`npm run explore -- --repo /path/to/ImpactGraph --revision origin/dev`. The agent
+`npm run explore -- --repo /path/to/DAD-Main --revision origin/dev`. The agent
 reads the pinned source and documentation, discovers capabilities in the browser,
 and chooses experiments with executable contracts and checkpoint comparisons without a predefined goal or test sequence. It records hypotheses, attempts independent reproduction,
 and retrieves earlier feature evidence with source-change tracking. This mode skips predefined test suites.
@@ -15,7 +15,7 @@ and API key are required. Discovery is separate from release acceptance.
 ```sh
 npm ci
 npm exec playwright install chromium
-npm start -- --repo /Users/shawncoe/Documents/dev/ImpactGraph
+npm start -- --repo /path/to/DAD-Main
 ```
 
 Open **http://127.0.0.1:4310** using the exact URL printed by the server. Existing runs under `.atm/runs/` appear automatically. Use `--port` and `--output` to change the listening port or history directory.
@@ -26,7 +26,7 @@ Open **http://127.0.0.1:4310** using the exact URL printed by the server. Existi
 - **Run validation:** select a local commit, branch or tag. ATM resolves it to a SHA before execution, permits one active dashboard run, and supports cancellation with cleanup.
 - **Commit watch:** opt in to validate new local commits every 15 seconds while the dashboard is running. Enabling establishes a baseline; it does not run the existing commit or fetch remote changes. If commits accumulate during a run, the latest observed candidate runs next. Watch settings and the last triggered SHA persist across restarts. Automated runs use deterministic checks; AI remains an explicit manual choice.
 
-Triage never changes the original check result. It can change a current acceptance assessment by resolving or dismissing a finding; it cannot override a failed required check. A later passing check is a review hint, not automatic resolution. A resolved finding reopens when its signature recurs. Findings from harness/configuration problems are not automatically classified as product defects.
+Triage never changes the original check result. It can change a current acceptance assessment by resolving or dismissing a finding; it cannot override a failed required check. A later passing check is a review hint, not automatic resolution. A resolved or dismissed finding reopens when its signature recurs. Findings from harness/configuration problems are not automatically classified as product defects.
 
 This interface is for one trusted local operator. It binds to loopback and protects mutations with same-origin checks and a session token. It does not implement multi-user authentication, shared hosting, PR webhooks, or deployment permissions. Do not expose it through a public tunnel. The AI configuration indicator reports whether environment variables are set, not whether provider credentials have been validated.
 
@@ -36,29 +36,38 @@ Dashboard state is stored in `.atm/runs/.dashboard/state.json`. Only one dashboa
 
 - Node.js 22 or newer, npm, Git, and tar.
 - Docker Engine/Desktop with Compose v2, running Linux containers.
-- A local ImpactGraph checkout. The initial adapter targets revision `1d3bd1774a6f65398d8aed2bb6f58d9375794118`; pass `--revision` to pin it explicitly.
+- A local DAD checkout. The initial adapter targets revision `1d3bd1774a6f65398d8aed2bb6f58d9375794118`; pass `--revision` to pin it explicitly.
 - Network access to install dependencies and build images. Runtime application containers have no external network access.
+
+The DAD rebrand retains the versioned `impactgraph` adapter/policy identifiers,
+`impactgraph_atm` disposable database name, and evidence-key filenames so existing
+policies and retained reports stay compatible. New dashboard sessions default to the
+sibling `../DAD-Main` checkout. A history directory remains bound to its original
+absolute repository path; moving a checkout requires a reviewed history migration,
+including source identities and finding assessments. Do not edit or delete history
+to bypass that guard. Historical URLs and diagnostic source revisions retain their
+original repository name.
 
 ## Run
 
 ```sh
 npm ci
 npm exec playwright install chromium
-npm run atm -- run --repo /Users/shawncoe/Documents/dev/ImpactGraph
+npm run atm -- run --repo /path/to/DAD-Main
 ```
 
 Each run gets a unique directory under `.atm/runs/`, a Docker Compose project, a loopback-only ingress port, synthetic database credentials, and disposable PostgreSQL storage. The command prints the path to `report.html`. Open it locally in a browser. `run.json` includes the candidate revision, source archive hash, image IDs, policy, results and evidence hashes.
 
 ```sh
 npm run atm -- inspect .atm/runs/RUN_ID/run.json
-npm run atm -- run --repo /path/to/ImpactGraph --revision COMMIT_SHA --output /private/tmp/atm-runs
+npm run atm -- run --repo /path/to/DAD-Main --revision COMMIT_SHA --output /private/tmp/atm-runs
 ```
 
 Only committed source is archived. Uncommitted changes, ignored files, local `.env` files, existing databases, and existing application servers are not used. Run-owned containers are removed even after a failed check or normal cancellation. Docker image tags, build cache, source archives, and evidence are retained for diagnosis.
 
 ## Checks implemented
 
-1. Validate and archive the requested ImpactGraph commit.
+1. Validate and archive the requested DAD commit.
 2. Build its production API/frontend images and build-stage test images.
 3. Start and migrate separate ephemeral PostgreSQL clusters for application acceptance and integration tests. Their roles cannot interfere with each other.
 4. Run existing Go vet/race-enabled tests and frontend lint/unit/type checks. Biome's VCS discovery is disabled because the archived container source has no Git metadata; its lint rules remain enabled.
@@ -74,11 +83,11 @@ The profile does **not** run the entire existing Playwright suite, external Stri
 
 ## Versioned acceptance policy
 
-The default [policy](policies/impactgraph-local.json) identifies the ImpactGraph adapter, local acceptance scope, required checks, per-check time budgets, evidence filenames and blocking finding severities. It requires both the staff and donor journeys. Foundation checks and cleanup cannot be made advisory. Unknown fields, handlers, scenario versions, invalid time budgets and weakened evidence contracts are rejected before execution.
+The default [policy](policies/impactgraph-local.json) identifies the DAD adapter, local acceptance scope, required checks, per-check time budgets, evidence filenames and blocking finding severities. It requires both the staff and donor journeys. Foundation checks and cleanup cannot be made advisory. Unknown fields, handlers, scenario versions, invalid time budgets and weakened evidence contracts are rejected before execution.
 
 ```sh
-npm run atm -- run --repo /path/to/ImpactGraph --policy policies/impactgraph-local.json
-npm start -- --repo /path/to/ImpactGraph --policy policies/impactgraph-local.json
+npm run atm -- run --repo /path/to/DAD-Main --policy policies/impactgraph-local.json
+npm start -- --repo /path/to/DAD-Main --policy policies/impactgraph-local.json
 npm run atm -- inspect .atm/runs/RUN_ID/run.json
 ```
 
@@ -105,13 +114,13 @@ The donor fixture seeds an unclaimed account and two hashed one-time links only 
 
 ## Optional AI exploration
 
-See [the Inkling validation results](docs/inkling-validation.md) for the first live
-Tinker run and seeded-defect benchmark, including current reliability limits.
+See [discovery setup and limits](docs/discovery.md) for provider configuration and
+seeded-defect benchmark instructions.
 
 Set `ATM_PROVIDER=openai` (default) with `OPENAI_API_KEY`, or `ATM_PROVIDER=tinker` with `TINKER_API_KEY`, and choose an explicit `ATM_MODEL`. OpenAI models must support Responses tool calls; Tinker models must support Messages tool calls. The npm entry points load the optional private `.atm/agent.env` file; shell variables take precedence. No model calls happen in the default validation run. See [Tinker setup](docs/discovery.md#use-thinking-machines-tinker) for Inkling configuration.
 
 ```sh
-npm run atm -- run --repo /path/to/ImpactGraph --ai --model YOUR_MODEL
+npm run atm -- run --repo /path/to/DAD-Main --ai --model YOUR_MODEL
 ```
 
 The first scenario lets an agent find the donation form from the public home page. It receives a bounded accessibility snapshot and can select exact links/buttons or declare completion. Deterministic DOM checks validate its claim. This is goal-driven exploration, not the deterministic staff scenario relabeled as AI.
@@ -144,7 +153,7 @@ npm test
 npm run test:browser
 ```
 
-To verify the complete dashboard-to-ImpactGraph path, start the dashboard and run `npm run test:live`. This launches a real validation from the browser and waits for its evidence. Screenshots and the acceptance result are saved under `.atm/ui/`. The live test is explicit and is not part of routine CI.
+To verify the complete dashboard-to-DAD path, start the dashboard and run `npm run test:live`. This launches a real validation from the browser and waits for its evidence. Screenshots and the acceptance result are saved under `.atm/ui/`. The live test is explicit and is not part of routine CI.
 
 Unit and integration tests exercise source-reader boundaries, structured experiment evidence, typed state assertions, clean-fixture mutation replay and restoration, versioned policy validation, missing or modified evidence, finding-based acceptance, agreement between CLI and dashboard assessments, donor state invariants, fail-closed decisions, evidence persistence, secret filtering, command failures/timeouts/cancellation, isolation configuration, model-action validation, independent verification, finding deduplication, persistent triage, request protection, and commit-watch behavior. Browser tests cover the dashboard's full interaction flow, responsive layout and automated accessibility checks on the overview, evidence dialog, finding dialog and mobile findings view, including a passing-checks/blocked-acceptance case after evidence modification, plus real request blocking and the exploration loop, without API charges.
 
@@ -152,12 +161,12 @@ API implementation references: [OpenAI function calling](https://developers.open
 
 ## Next increments
 
-- Run the live-model discovery benchmark and review discovery quality on ImpactGraph; expand staff identity support and approved state projections beyond donor profiles.
+- Run the live-model discovery benchmark and review discovery quality on DAD; expand staff identity support and approved state projections beyond donor profiles.
 - Expand deployed acceptance scenarios: role-specific staff permissions, referral attribution, recurring gifts, worker recovery.
 - Add sandbox Stripe and captured-email services with explicit egress rules.
 - Adapt the existing full Playwright suite to deployed targets and ingest structured suite results.
 - Add security/accessibility gates; calibrate performance budgets and expand the read baseline to write, worker, soak and capacity workloads.
-- Resolve ImpactGraph's build-time origin configuration before same-image staging/production promotion.
+- Resolve DAD's build-time origin configuration before same-image staging/production promotion.
 - Add evidence retention, richer finding extraction, PR/staging triggers and an authenticated shared deployment.
 - Add production deployment and recovery automation only after staging evidence and rollback compatibility are established.
 

@@ -64,7 +64,7 @@ export class ImpactGraph {
     const files = tree.stdout.trim().split('\n');
     if (files.some(f => /(^|\/)\.env(?:\.|$)/.test(f) && !f.endsWith('.example'))) throw new RunError('Snapshot refuses tracked environment files containing potential credentials.');
     for (const file of ['apps/donor-api/Dockerfile', 'apps/web/Dockerfile', 'apps/web/package-lock.json']) {
-      if (!files.includes(file)) throw new RunError(`ImpactGraph adapter requires ${file}.`);
+      if (!files.includes(file)) throw new RunError(`DAD adapter requires ${file}.`);
     }
     await mkdir(this.source, { mode: 0o700 });
     const archive = path.join(this.run.dir, 'source.tar');
