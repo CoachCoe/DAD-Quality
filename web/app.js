@@ -114,8 +114,12 @@ function performanceView(value) {
 async function showRun(id, open = true) {
   try {
     const data = await api(`/api/runs/${id}`);
-    const fingerprint = JSON.stringify(data) + JSON.stringify(state.active);
-    if (!open && selectedRun === id && detailFingerprint === fingerprint) return;
+    const { durationMs, ...stableSummary } = data.summary;
+    const fingerprint = JSON.stringify({ ...data, summary: stableSummary }) + JSON.stringify(state.active);
+    if (!open && selectedRun === id && detailFingerprint === fingerprint) {
+      $('#run-detail .detail-meta small').textContent = `${duration(durationMs)} · ${data.summary.trigger}`;
+      return;
+    }
     selectedRun = id; detailFingerprint = fingerprint;
     const { run, summary, comparison, integrity, release } = data;
     const active = state.active?.id === id;
