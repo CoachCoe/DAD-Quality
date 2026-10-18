@@ -149,6 +149,7 @@ Do not run global Docker prune commands to clean an ATM run. Retention is manual
 
 ```sh
 npm run check
+npm run lint
 npm test
 npm run test:browser
 ```
