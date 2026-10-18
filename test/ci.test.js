@@ -7,25 +7,65 @@ import { generateKeyPairSync } from 'node:crypto';
 import { Run, digest } from '../src/core.js';
 import { loadPolicy } from '../src/policy.js';
 import { assessRelease } from '../src/release.js';
-import { emptyLedger, validateLedger, prepareProposal, publishProposal, decryptBundle, extractBundle, mergeFindings } from '../src/ci.js';
+import {
+  emptyLedger,
+  validateLedger,
+  prepareProposal,
+  publishProposal,
+  decryptBundle,
+  extractBundle,
+  mergeFindings,
+} from '../src/ci.js';
 
-const source = 'github:example/DAD-Main', revision = 'a'.repeat(40);
-const keys = generateKeyPairSync('rsa', { modulusLength: 2048, publicKeyEncoding: { type: 'spki', format: 'pem' }, privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
+const source = 'github:example/DAD-Main',
+  revision = 'a'.repeat(40);
+const keys = generateKeyPairSync('rsa', {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: 'spki', format: 'pem' },
+  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+});
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-ci-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const policy = await loadPolicy();
-  const run = await Run.create(root, { revision }, policy.definition.checks.filter(c => c.required).map(c => c.id), policy);
-  run.data.candidate = { source, revision, sourceArchiveSha256: 'b'.repeat(64), images: { api: `sha256:${'c'.repeat(64)}`, web: `sha256:${'d'.repeat(64)}` } };
+  const run = await Run.create(
+    root,
+    { revision },
+    policy.definition.checks.filter(c => c.required).map(c => c.id),
+    policy,
+  );
+  run.data.candidate = {
+    source,
+    revision,
+    sourceArchiveSha256: 'b'.repeat(64),
+    images: { api: `sha256:${'c'.repeat(64)}`, web: `sha256:${'d'.repeat(64)}` },
+  };
   for (const check of policy.definition.checks) {
     const evidence = [];
     for (const name of check.evidence) evidence.push(await run.evidence(name, 'private synthetic detail'));
-    run.data.results.push({ id: check.id, status: 'passed', summary: 'private synthetic detail', finishedAt: run.data.startedAt, evidence });
+    run.data.results.push({
+      id: check.id,
+      status: 'passed',
+      summary: 'private synthetic detail',
+      finishedAt: run.data.startedAt,
+      evidence,
+    });
   }
   await run.finish();
   const ledger = emptyLedger(source);
-  const prepare = (state = ledger) => prepareProposal({ run, ledger: state, publicKey: keys.publicKey, execution: '100:1' });
-  const publish = (result, extra = {}) => publishProposal({ ledger, ...result, source, execution: '100:1', revision, artifactId: '200', artifactDigest: 'e'.repeat(64), ...extra });
+  const prepare = (state = ledger) =>
+    prepareProposal({ run, ledger: state, publicKey: keys.publicKey, execution: '100:1' });
+  const publish = (result, extra = {}) =>
+    publishProposal({
+      ledger,
+      ...result,
+      source,
+      execution: '100:1',
+      revision,
+      artifactId: '200',
+      artifactDigest: 'e'.repeat(64),
+      ...extra,
+    });
   return { root, run, ledger, prepare, publish };
 }
 
@@ -56,7 +96,9 @@ test('encrypted evidence rejects corruption and the wrong recipient', async t =>
   const { prepare } = await fixture(t);
   const { bundle } = await prepare();
   const altered = JSON.parse(bundle);
-  const bytes = Buffer.from(altered.data, 'base64'); bytes[0] ^= 1; altered.data = bytes.toString('base64');
+  const bytes = Buffer.from(altered.data, 'base64');
+  bytes[0] ^= 1;
+  altered.data = bytes.toString('base64');
   assert.throws(() => decryptBundle(JSON.stringify(altered), keys.privateKey));
   const wrong = generateKeyPairSync('rsa', { modulusLength: 2048 });
   assert.throws(() => decryptBundle(bundle, wrong.privateKey));
@@ -64,14 +106,16 @@ test('encrypted evidence rejects corruption and the wrong recipient', async t =>
 
 test('failed runs persist findings; a later pass cannot erase them', async t => {
   const { run, prepare, publish } = await fixture(t);
-  run.data.results[4].status = 'failed'; await run.save();
+  run.data.results[4].status = 'failed';
+  await run.save();
   const failed = await prepare();
   assert.equal(failed.proposal.eligible, false);
   const ledger = publish(failed);
   assert.equal(ledger.findings.length, 1);
   assert.equal(ledger.findings[0].severity, 'unassessed');
   assert.equal('title' in ledger.findings[0], false);
-  run.data.results[4].status = 'passed'; await run.save();
+  run.data.results[4].status = 'passed';
+  await run.save();
   const passing = await prepare(ledger);
   assert.equal(passing.proposal.eligible, false);
   assert.deepEqual(passing.proposal.findings, ledger.findings);
@@ -99,10 +143,15 @@ test('publisher rejects stale state, wrong candidate, replay, missing receipt an
   const { prepare, publish, ledger } = await fixture(t);
   const result = await prepare();
   for (const extra of [
-    { revision: 'f'.repeat(40) }, { source: 'github:other/repo' }, { execution: '100:2' },
-    { artifactId: '' }, { artifactDigest: '' }, { bundle: Buffer.from('replaced') },
+    { revision: 'f'.repeat(40) },
+    { source: 'github:other/repo' },
+    { execution: '100:2' },
+    { artifactId: '' },
+    { artifactDigest: '' },
+    { bundle: Buffer.from('replaced') },
     { proposal: { ...result.proposal, baseDigest: '0'.repeat(64) } },
-  ]) assert.throws(() => publish(result, extra));
+  ])
+    assert.throws(() => publish(result, extra));
   const next = publish(result);
   assert.throws(() => publish(result, { ledger: next }));
   assert.equal(ledger.sequence, 0);
@@ -110,26 +159,55 @@ test('publisher rejects stale state, wrong candidate, replay, missing receipt an
 
 test('invalid history fails closed, including malformed closure and duplicate findings', async t => {
   const { run, prepare, publish } = await fixture(t);
-  run.data.results[4].status = 'failed'; await run.save();
+  run.data.results[4].status = 'failed';
+  await run.save();
   const ledger = publish(await prepare());
   for (const change of [
-    l => { l.schemaVersion = 0; }, l => { delete l.findings; }, l => { l.sequence = 0; },
-    l => { l.findings.push(l.findings[0]); }, l => { l.findings[0].disposition = 'resolved'; },
-    l => { l.receipts[0].artifactId = ''; }, l => { l.findings[0].title = 'accidental private detail'; },
+    l => {
+      l.schemaVersion = 0;
+    },
+    l => {
+      delete l.findings;
+    },
+    l => {
+      l.sequence = 0;
+    },
+    l => {
+      l.findings.push(l.findings[0]);
+    },
+    l => {
+      l.findings[0].disposition = 'resolved';
+    },
+    l => {
+      l.receipts[0].artifactId = '';
+    },
+    l => {
+      l.findings[0].title = 'accidental private detail';
+    },
   ]) {
-    const bad = structuredClone(ledger); change(bad);
+    const bad = structuredClone(ledger);
+    change(bad);
     assert.throws(() => validateLedger(bad, source));
   }
 });
 
 test('resolved and dismissed findings reopen on recurrence while retries are idempotent', async t => {
   const { run, prepare, publish } = await fixture(t);
-  run.data.results[4].status = 'failed'; await run.save();
+  run.data.results[4].status = 'failed';
+  await run.save();
   const ledger = publish(await prepare());
   for (const disposition of ['resolved', 'dismissed']) {
-    const prior = structuredClone(ledger), f = prior.findings[0];
-    f.disposition = disposition; f.updatedAt = f.lastSeen;
-    f.audit.push({ at: f.lastSeen, actor: 'reviewer', disposition, severity: 'unassessed', noteDigest: 'a'.repeat(64) });
+    const prior = structuredClone(ledger),
+      f = prior.findings[0];
+    f.disposition = disposition;
+    f.updatedAt = f.lastSeen;
+    f.audit.push({
+      at: f.lastSeen,
+      actor: 'reviewer',
+      disposition,
+      severity: 'unassessed',
+      noteDigest: 'a'.repeat(64),
+    });
     assert.equal(mergeFindings(prior, [f]).findings[0].disposition, disposition);
     const next = mergeFindings(prior, [{ ...f, lastRunId: 'atm-20261010010000-12345678' }]);
     assert.equal(next.findings[0].disposition, 'reopened');
@@ -139,14 +217,24 @@ test('resolved and dismissed findings reopen on recurrence while retries are ide
 
 test('worker proposals cannot discard historical findings or change their severity', async t => {
   const { run, prepare, publish } = await fixture(t);
-  run.data.results[4].status = 'failed'; await run.save();
+  run.data.results[4].status = 'failed';
+  await run.save();
   const ledger = publish(await prepare());
-  const next = await prepare(ledger); next.proposal.execution = '100:2';
+  const next = await prepare(ledger);
+  next.proposal.execution = '100:2';
   for (const mutate of [
-    p => { p.findings = []; }, p => { p.findings[0].severity = 'low'; },
-    p => { p.eligible = true; },
+    p => {
+      p.findings = [];
+    },
+    p => {
+      p.findings[0].severity = 'low';
+    },
+    p => {
+      p.eligible = true;
+    },
   ]) {
-    const proposal = structuredClone(next.proposal); mutate(proposal);
+    const proposal = structuredClone(next.proposal);
+    mutate(proposal);
     assert.throws(() => publish({ ...next, proposal }, { ledger, execution: '100:2' }));
   }
 });

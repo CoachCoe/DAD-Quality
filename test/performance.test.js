@@ -4,7 +4,13 @@ import http from 'node:http';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { measurePerformance, metrics, comparePerformance, readPerformance, performanceDetail } from '../src/performance.js';
+import {
+  measurePerformance,
+  metrics,
+  comparePerformance,
+  readPerformance,
+  performanceDetail,
+} from '../src/performance.js';
 import { defaultPerformanceProfile, validatePerformanceProfile } from '../src/performance-config.js';
 import { loadPolicy, validatePolicy, hashPolicy } from '../src/policy.js';
 import { collectFindings } from '../src/history.js';
@@ -13,23 +19,48 @@ import { evaluateRelease } from '../src/release.js';
 
 const body = JSON.stringify({ initiatives: [], state: 'ready', gifts: [] });
 const cookies = ['dad_donor_session=synthetic'];
-const profile = () => ({ ...structuredClone(defaultPerformanceProfile), thinkMs: 5, requestTimeoutMs: 150, phases: defaultPerformanceProfile.phases.map(p => ({ ...p, concurrency: p.name === 'burst' ? 4 : 2, durationMs: 300 })), criteria: { minRequests: 3, maxP95Ms: 50, maxErrorRate: 0 } });
+const profile = () => ({
+  ...structuredClone(defaultPerformanceProfile),
+  thinkMs: 5,
+  requestTimeoutMs: 150,
+  phases: defaultPerformanceProfile.phases.map(p => ({
+    ...p,
+    concurrency: p.name === 'burst' ? 4 : 2,
+    durationMs: 300,
+  })),
+  criteria: { minRequests: 3, maxP95Ms: 50, maxErrorRate: 0 },
+});
 async function server(t, handler) {
   const app = http.createServer(handler);
   await new Promise(resolve => app.listen(0, '127.0.0.1', resolve));
-  t.after(() => { app.closeAllConnections(); return new Promise(resolve => app.close(resolve)); });
+  t.after(() => {
+    app.closeAllConnections();
+    return new Promise(resolve => app.close(resolve));
+  });
   return `http://127.0.0.1:${app.address().port}`;
 }
 
 test('metrics count failed attempts, nearest-rank percentiles, throughput and empty samples', () => {
-  const value = metrics([{ ms: 10, error: null, status: 200 }, { ms: 100, error: 'timeout', status: 0 }], 1000);
-  assert.equal(value.p50Ms, 10); assert.equal(value.p95Ms, 100); assert.equal(value.p99Ms, 100);
-  assert.equal(value.throughput, 2); assert.equal(value.successfulThroughput, 1); assert.equal(value.errorRate, .5); assert.equal(value.timeouts, 1);
+  const value = metrics(
+    [
+      { ms: 10, error: null, status: 200 },
+      { ms: 100, error: 'timeout', status: 0 },
+    ],
+    1000,
+  );
+  assert.equal(value.p50Ms, 10);
+  assert.equal(value.p95Ms, 100);
+  assert.equal(value.p99Ms, 100);
+  assert.equal(value.throughput, 2);
+  assert.equal(value.successfulThroughput, 1);
+  assert.equal(value.errorRate, 0.5);
+  assert.equal(value.timeouts, 1);
   assert.equal(metrics([], 100).p95Ms, null);
 });
 
 test('real HTTP load detects slow bodies, error responses and candidate regressions', async t => {
-  let slow = false, failing = false;
+  let slow = false,
+    failing = false;
   const origin = await server(t, (req, res) => {
     assert.equal(req.method, 'GET');
     assert.equal(req.headers.cookie, req.url.includes('/public/') ? undefined : cookies[0]);
@@ -54,10 +85,14 @@ test('real HTTP load detects slow bodies, error responses and candidate regressi
 });
 
 test('timeouts, cancellation, redirects and safety caps do not masquerade as completed good load', async t => {
-  let mode = 'hang', redirected = 0;
+  let mode = 'hang',
+    redirected = 0;
   const origin = await server(t, (req, res) => {
     if (req.url === '/redirected') redirected++;
-    if (mode === 'redirect') { res.writeHead(302, { location: '/redirected' }); res.end(); }
+    if (mode === 'redirect') {
+      res.writeHead(302, { location: '/redirected' });
+      res.end();
+    }
     if (mode === 'fast') res.end(body);
   });
   const options = { origin, cookies, profile: profile(), environment: {} };
@@ -66,12 +101,15 @@ test('timeouts, cancellation, redirects and safety caps do not masquerade as com
   assert.equal(stalled.assessment.status, 'exceeded');
   mode = 'redirect';
   const redirect = await measurePerformance(options);
-  assert.equal(redirect.phases[1].errorRate, 1); assert.equal(redirected, 0);
+  assert.equal(redirect.phases[1].errorRate, 1);
+  assert.equal(redirected, 0);
   mode = 'fast';
-  const cappedProfile = profile(); cappedProfile.maxRequestsPerPhase = 3;
+  const cappedProfile = profile();
+  cappedProfile.maxRequestsPerPhase = 3;
   assert.equal((await measurePerformance({ ...options, profile: cappedProfile })).assessment.status, 'inconclusive');
   const canceled = await measurePerformance({ ...options, signal: AbortSignal.timeout(30) });
-  assert.equal(canceled.completed, false); assert.equal(canceled.assessment.status, 'inconclusive');
+  assert.equal(canceled.completed, false);
+  assert.equal(canceled.assessment.status, 'inconclusive');
   await assert.rejects(measurePerformance({ ...options, origin: 'https://example.com' }), /loopback/);
   await assert.rejects(measurePerformance({ ...options, origin: `${origin}/redirected` }), /loopback/);
 });
@@ -91,16 +129,40 @@ test('policy bounds load and requires explicit budgets before making performance
   const { definition } = await loadPolicy();
   const check = definition.checks.find(c => c.id === 'performance');
   assert.equal(check.required, false);
-  for (const mutate of [p => { p.phases[2].concurrency = 1000; }, p => { p.phases[0].durationMs = 3600000; }, p => { p.url = 'https://example.com'; }, p => { p.criteria.maxP95Ms = -1; }, p => { p.thinkMs = -1; }, p => { p.regression.throughputRatio = 2; }]) {
-    const p = profile(); mutate(p); assert.throws(() => validatePerformanceProfile(p));
+  for (const mutate of [
+    p => {
+      p.phases[2].concurrency = 1000;
+    },
+    p => {
+      p.phases[0].durationMs = 3600000;
+    },
+    p => {
+      p.url = 'https://example.com';
+    },
+    p => {
+      p.criteria.maxP95Ms = -1;
+    },
+    p => {
+      p.thinkMs = -1;
+    },
+    p => {
+      p.regression.throughputRatio = 2;
+    },
+  ]) {
+    const p = profile();
+    mutate(p);
+    assert.throws(() => validatePerformanceProfile(p));
   }
   check.required = true;
   assert.throws(() => validatePolicy(definition), /explicit/);
-  check.profile.criteria.maxP95Ms = 300; check.profile.criteria.maxErrorRate = .01;
+  check.profile.criteria.maxP95Ms = 300;
+  check.profile.criteria.maxErrorRate = 0.01;
   validatePolicy(definition);
-  check.timeoutMs = 1000; assert.throws(() => validatePolicy(definition), /time budget/);
+  check.timeoutMs = 1000;
+  assert.throws(() => validatePolicy(definition), /time budget/);
   // Previous policies remain readable and eligible under their original contract.
-  definition.checks = definition.checks.filter(c => c.id !== 'performance'); definition.version = '1.0.0';
+  definition.checks = definition.checks.filter(c => c.id !== 'performance');
+  definition.version = '1.0.0';
   validatePolicy(definition);
 });
 
@@ -108,23 +170,43 @@ test('advisory failures stay visible without producing blocking findings; requir
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-perf-advisory-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const policy = await loadPolicy();
-  const run = await Run.create(root, {}, policy.definition.checks.filter(c => c.required).map(c => c.id), policy);
-  run.data.candidate = { revision: 'a'.repeat(40), source: 'fixture', sourceArchiveSha256: 'b'.repeat(64), images: { api: `sha256:${'c'.repeat(64)}`, web: `sha256:${'d'.repeat(64)}` } };
+  const run = await Run.create(
+    root,
+    {},
+    policy.definition.checks.filter(c => c.required).map(c => c.id),
+    policy,
+  );
+  run.data.candidate = {
+    revision: 'a'.repeat(40),
+    source: 'fixture',
+    sourceArchiveSha256: 'b'.repeat(64),
+    images: { api: `sha256:${'c'.repeat(64)}`, web: `sha256:${'d'.repeat(64)}` },
+  };
   for (const c of policy.definition.checks) {
     const evidence = [];
     for (const name of c.evidence) evidence.push(await run.evidence(name, '{}'));
-    run.data.results.push({ id: c.id, status: c.id === 'performance' ? 'failed' : 'passed', summary: 'Synthetic budget exceeded', finishedAt: run.data.startedAt, evidence });
+    run.data.results.push({
+      id: c.id,
+      status: c.id === 'performance' ? 'failed' : 'passed',
+      summary: 'Synthetic budget exceeded',
+      finishedAt: run.data.startedAt,
+      evidence,
+    });
   }
   await run.finish();
   let findings = await collectFindings(root, [run.data]);
-  assert.equal(findings.length, 0); assert.equal(evaluateRelease(run.data, { findings }).eligible, true);
+  assert.equal(findings.length, 0);
+  assert.equal(evaluateRelease(run.data, { findings }).eligible, true);
   const check = run.data.policy.definition.checks.find(c => c.id === 'performance');
-  check.required = true; check.profile.criteria.maxP95Ms = 50; check.profile.criteria.maxErrorRate = 0;
+  check.required = true;
+  check.profile.criteria.maxP95Ms = 50;
+  check.profile.criteria.maxErrorRate = 0;
   run.data.required = run.data.policy.definition.checks.filter(c => c.required).map(c => c.id);
   run.data.policy.digest = hashPolicy({ definition: run.data.policy.definition, scenarios: run.data.policy.scenarios });
   findings = await collectFindings(root, [run.data]);
   const release = evaluateRelease(run.data, { findings });
-  assert.equal(findings.length, 1); assert.equal(release.eligible, false);
+  assert.equal(findings.length, 1);
+  assert.equal(release.eligible, false);
   assert.ok(release.reasons.includes('performance: Synthetic budget exceeded'));
   assert.ok(!release.reasons.some(r => r.startsWith('Policy unavailable')));
 });
@@ -135,16 +217,27 @@ test('dashboard loads only verified performance evidence and matching history', 
   const origin = await server(t, (_req, res) => res.end(body));
   const p = profile();
   const report = await measurePerformance({ origin, cookies, profile: p, environment: {} });
-  const policy = await loadPolicy(); policy.definition.checks.find(c => c.id === 'performance').profile = p;
+  const policy = await loadPolicy();
+  policy.definition.checks.find(c => c.id === 'performance').profile = p;
   const runs = [];
   for (let i = 0; i < 2; i++) {
     const run = await Run.create(root, { adapter: 'impactgraph' }, [], policy);
-    run.data.startedAt = `2026-10-0${i + 1}T00:00:00.000Z`; run.data.candidate = { source: 'fixture', revision: `${i}`.repeat(40) };
-    run.data.results = [{ id: 'performance', status: 'passed', finishedAt: run.data.startedAt, evidence: [await run.evidence('performance.json', JSON.stringify(report))] }];
-    await run.finish(); runs.unshift(run.data);
+    run.data.startedAt = `2026-10-0${i + 1}T00:00:00.000Z`;
+    run.data.candidate = { source: 'fixture', revision: `${i}`.repeat(40) };
+    run.data.results = [
+      {
+        id: 'performance',
+        status: 'passed',
+        finishedAt: run.data.startedAt,
+        evidence: [await run.evidence('performance.json', JSON.stringify(report))],
+      },
+    ];
+    await run.finish();
+    runs.unshift(run.data);
   }
   const detail = await performanceDetail(root, runs[0], runs);
-  assert.equal(detail.comparison.comparable, true); assert.equal(detail.comparison.baselineId, runs[1].id);
+  assert.equal(detail.comparison.comparable, true);
+  assert.equal(detail.comparison.baselineId, runs[1].id);
   await writeFile(path.join(root, runs[1].id, 'evidence/performance.json'), '{}');
   assert.equal((await performanceDetail(root, runs[0], runs)).comparison.comparable, false);
   await assert.rejects(readPerformance(path.join(root, runs[1].id), runs[1]), /integrity/);

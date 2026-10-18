@@ -3,7 +3,13 @@ import assert from 'node:assert/strict';
 import { composeDefinition, DadAdapter } from '../src/dad.js';
 
 test('runtime isolates database and disables external integrations', () => {
-  const config = composeDefinition({ id: 'atm-test', port: 43123, password: 'owner', apiPassword: 'api', staffPassword: 'staff' });
+  const config = composeDefinition({
+    id: 'atm-test',
+    port: 43123,
+    password: 'owner',
+    apiPassword: 'api',
+    staffPassword: 'staff',
+  });
   assert.equal(config.networks.isolated.internal, true);
   assert.equal(config.services.postgres.ports, undefined);
   assert.equal(config.services['test-postgres'].ports, undefined);
@@ -23,11 +29,30 @@ test('runtime isolates database and disables external integrations', () => {
 
 test('donor verifier rejects extra sessions, unconsumed links and changes to another donor', async () => {
   const adapter = new DadAdapter({ data: { id: 'fixture' }, dir: '/tmp/fixture' }, { repo: '/synthetic' });
-  const good = { claimed: 1, consumed_links: 2, sessions: 1, active_sessions: 1, revoked_sessions: 0, other_claimed: 0, other_sessions: 0 };
+  const good = {
+    claimed: 1,
+    consumed_links: 2,
+    sessions: 1,
+    active_sessions: 1,
+    revoked_sessions: 0,
+    other_claimed: 0,
+    other_sessions: 0,
+  };
   let state = good;
-  adapter.sql = async query => { assert.match(query, /^BEGIN READ ONLY;/); assert.match(query, /ROLLBACK;/); return { stdout: `BEGIN\n${JSON.stringify(state)}\nROLLBACK` }; };
+  adapter.sql = async query => {
+    assert.match(query, /^BEGIN READ ONLY;/);
+    assert.match(query, /ROLLBACK;/);
+    return { stdout: `BEGIN\n${JSON.stringify(state)}\nROLLBACK` };
+  };
   assert.deepEqual(await adapter.verifyDonor(), good);
-  for (const [key, value] of [['claimed', 0], ['consumed_links', 1], ['sessions', 2], ['active_sessions', 0], ['other_claimed', 1], ['other_sessions', 1]]) {
+  for (const [key, value] of [
+    ['claimed', 0],
+    ['consumed_links', 1],
+    ['sessions', 2],
+    ['active_sessions', 0],
+    ['other_claimed', 1],
+    ['other_sessions', 1],
+  ]) {
     state = { ...good, [key]: value };
     await assert.rejects(adapter.verifyDonor(), error => error.status === 'failed');
   }

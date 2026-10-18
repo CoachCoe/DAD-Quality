@@ -3,10 +3,13 @@ import { mkdir, writeFile, rename, readFile, lstat } from 'node:fs/promises';
 import path from 'node:path';
 
 export class RunError extends Error {
-  constructor(message, status = 'inconclusive') { super(message); this.status = status; }
+  constructor(message, status = 'inconclusive') {
+    super(message);
+    this.status = status;
+  }
 }
 
-export const digest = (value) => createHash('sha256').update(value).digest('hex');
+export const digest = value => createHash('sha256').update(value).digest('hex');
 export const now = () => new Date().toISOString();
 
 export function redact(value) {
@@ -30,7 +33,11 @@ export function evaluate(required, results) {
     return matches[0];
   });
   const status = ['failed', 'canceled', 'inconclusive'].find(s => checks.some(c => c.status === s)) ?? 'passed';
-  return { status, eligible: status === 'passed', reasons: checks.filter(c => c.status !== 'passed').map(c => `${c.id}: ${c.summary}`) };
+  return {
+    status,
+    eligible: status === 'passed',
+    reasons: checks.filter(c => c.status !== 'passed').map(c => `${c.id}: ${c.summary}`),
+  };
 }
 
 export async function atomicJSON(file, value) {
@@ -49,16 +56,24 @@ export async function verifyEvidence(directory, run) {
         continue;
       }
       try {
-        if (!(await lstat(path.join(directory, 'evidence'))).isDirectory() || !(await lstat(path.join(directory, relative))).isFile()) throw new Error('Evidence must be a regular file');
+        if (
+          !(await lstat(path.join(directory, 'evidence'))).isDirectory() ||
+          !(await lstat(path.join(directory, relative))).isFile()
+        )
+          throw new Error('Evidence must be a regular file');
         const bytes = await readFile(path.join(directory, relative));
-        if (digest(bytes) !== item.sha256 || bytes.length !== item.bytes) issues.push(`${result.id}: changed evidence ${relative}`);
-      } catch { issues.push(`${result.id}: missing evidence ${relative}`); }
+        if (digest(bytes) !== item.sha256 || bytes.length !== item.bytes)
+          issues.push(`${result.id}: changed evidence ${relative}`);
+      } catch {
+        issues.push(`${result.id}: missing evidence ${relative}`);
+      }
     }
   }
   return issues;
 }
 
-const escapeHTML = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const escapeHTML = value =>
+  String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 export function reportHTML(run) {
   const decision = run.decision;
@@ -78,17 +93,37 @@ ${run.release ? `<section><h2>Local acceptance: ${escapeHTML(run.release.status)
 
 export class Run {
   static async create(root, options, required, policy) {
-    const id = `atm-${new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)}-${randomUUID().slice(0, 8)}`;
+    const id = `atm-${new Date()
+      .toISOString()
+      .replace(/[^0-9]/g, '')
+      .slice(0, 14)}-${randomUUID().slice(0, 8)}`;
     const dir = path.resolve(root, id);
     await mkdir(path.join(dir, 'evidence'), { recursive: true, mode: 0o700 });
-    const run = new Run(dir, { schemaVersion: policy ? 2 : 1, id, startedAt: now(), options, required, policy: policy ?? { version: 1, scope: 'local-validation', digest: digest(JSON.stringify(required)) }, results: [], decision: evaluate(required, []) });
+    const run = new Run(dir, {
+      schemaVersion: policy ? 2 : 1,
+      id,
+      startedAt: now(),
+      options,
+      required,
+      policy: policy ?? { version: 1, scope: 'local-validation', digest: digest(JSON.stringify(required)) },
+      results: [],
+      decision: evaluate(required, []),
+    });
     await run.save();
     return run;
   }
-  constructor(dir, data) { this.dir = dir; this.data = data; }
+  constructor(dir, data) {
+    this.dir = dir;
+    this.data = data;
+  }
   async save() {
     this.data.decision = evaluate(this.data.required, this.data.results);
-    if (this.data.canceledAt) this.data.decision = { status: 'canceled', eligible: false, reasons: ['Run canceled; inspect cleanup before retrying.'] };
+    if (this.data.canceledAt)
+      this.data.decision = {
+        status: 'canceled',
+        eligible: false,
+        reasons: ['Run canceled; inspect cleanup before retrying.'],
+      };
     await atomicJSON(path.join(this.dir, 'run.json'), this.data);
     await writeFile(path.join(this.dir, 'report.html'), reportHTML(this.data), { mode: 0o600 });
   }
@@ -97,8 +132,14 @@ export class Run {
     let safe = redact(content);
     if (relative.endsWith('.json')) {
       try {
-        safe = JSON.stringify(JSON.parse(content), (_key, value) => typeof value === 'string' ? redact(value) : value, 2);
-      } catch { /* Retain malformed diagnostic payloads as redacted text. */ }
+        safe = JSON.stringify(
+          JSON.parse(content),
+          (_key, value) => (typeof value === 'string' ? redact(value) : value),
+          2,
+        );
+      } catch {
+        /* Retain malformed diagnostic payloads as redacted text. */
+      }
     }
     await writeFile(file, safe, { mode: 0o600 });
     return this.reference(`evidence/${relative}`);
@@ -108,7 +149,14 @@ export class Run {
     return { path: relative, sha256: digest(content), bytes: content.length };
   }
   async step(id, action) {
-    const result = { id, required: this.data.required.includes(id), status: 'inconclusive', startedAt: now(), evidence: [], summary: 'Interrupted before completion.' };
+    const result = {
+      id,
+      required: this.data.required.includes(id),
+      status: 'inconclusive',
+      startedAt: now(),
+      evidence: [],
+      summary: 'Interrupted before completion.',
+    };
     this.data.results.push(result);
     await this.save();
     process.stdout.write(`→ ${id}\n`);
@@ -124,5 +172,8 @@ export class Run {
     process.stdout.write(`  ${result.status}: ${result.summary}\n`);
     return result.status === 'passed';
   }
-  async finish() { this.data.finishedAt = now(); await this.save(); }
+  async finish() {
+    this.data.finishedAt = now();
+    await this.save();
+  }
 }
