@@ -17,7 +17,7 @@ ATM_MODEL=your-tool-capable-model
 ```
 
 ```sh
-npm run explore -- --repo /Users/shawncoe/Documents/dev/ImpactGraph --revision origin/dev
+npm run explore -- --repo /path/to/DAD-Main --revision origin/dev
 ```
 
 `npm run explore` explicitly loads that file with Node's environment-file parser;
@@ -33,7 +33,7 @@ memory tools run directly, outside the browser-action checks in a contract.
 To use **Explore application** in the dashboard with that file:
 
 ```sh
-npm start -- --repo /Users/shawncoe/Documents/dev/ImpactGraph
+npm start -- --repo /path/to/DAD-Main
 ```
 
 Fixture initialization and replay restart the ingress together with the application
@@ -65,7 +65,7 @@ Verify configuration with one model request before provisioning the application:
 
 ```sh
 npm run model:check
-npm run explore -- --repo /Users/shawncoe/Documents/dev/ImpactGraph --revision origin/dev
+npm run explore -- --repo /path/to/DAD-Main --revision origin/dev
 ```
 
 The connection check can use up to 2,000 output tokens and 60 seconds. It validates
@@ -145,12 +145,12 @@ text makes text checks inconclusive. Supported expectations are `text_present`,
 `text_absent`, `no_server_error`, `no_page_error`, `field_value`, `field_checked`,
 `path_equals`, `state_equals`, `state_unchanged`, `state_delta`, `field_unchanged`,
 and `checkbox_unchanged`. Missing fields are inconclusive, never assumed
-matches. The ImpactGraph adapter independently reads only the two synthetic donors'
+matches. The DAD adapter independently reads only the two synthetic donors'
 public names, email notification preferences/version, gift count, and active session
 count. It exposes no arbitrary query tool or session credentials. Code is evidence
 about implementation; it does not establish that the implementation is correct.
 
-With ImpactGraph's replay fixture, the harness pauses API and web services and captures
+With DAD's replay fixture, the harness pauses API and web services and captures
 the agent's current database. It restores a pristine post-seeding snapshot, restarts
 the services, and replays the full action sequence, including actor changes, against
 that fixture. Actor changes create fresh browser contexts. After replay, it pauses
@@ -260,7 +260,7 @@ fault-injection applications. They check observed-control navigation, actor
 isolation, server-error reproduction, write-replay refusal, unsupported claims,
 budgets, cleanup, memory integrity, and dashboard presentation. They test the
 agent infrastructure; they do not demonstrate a live model's discovery ability.
-A live-model run against ImpactGraph requires configured credentials and should
+A live-model run against DAD requires configured credentials and should
 be reviewed separately for useful investigations and false-positive rate.
 
 The default OpenAI provider uses the official [Responses function-calling interface](https://developers.openai.com/api/docs/guides/function-calling)
@@ -345,7 +345,7 @@ For example, after navigating as donor A, an agent might declare:
 ```
 
 This example uses the synthetic benchmark's `save_count`. Real adapters expose only
-their approved fields; the ImpactGraph donor projection does not expose `save_count`.
+their approved fields; the DAD donor projection does not expose `save_count`.
 The plan's other fields (`capability`, `behavior`, `state`, `preconditions`, `expected`,
 `basis`, `references`) remain required. A full worked contract is retained in each
 investigation report. Use `checkpoint` with `target=before`, execute the actions,

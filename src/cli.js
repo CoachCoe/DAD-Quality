@@ -10,10 +10,10 @@ import { assessRelease } from './release.js';
 
 const help = `ATM — local application quality runner
 
-  npm run atm -- run --repo /path/to/ImpactGraph [--revision HEAD] [--ai --model MODEL]
-  npm run atm -- explore --repo /path/to/ImpactGraph --model MODEL
+  npm run atm -- run --repo /path/to/DAD-Main [--revision HEAD] [--ai --model MODEL]
+  npm run atm -- explore --repo /path/to/DAD-Main --model MODEL
   npm run atm -- inspect /path/to/run/run.json
-  npm start -- --repo /path/to/ImpactGraph
+  npm start -- --repo /path/to/DAD-Main
 
 Options:
   --output DIR      Evidence root (default .atm/runs)
@@ -47,7 +47,7 @@ export async function main(args = process.argv.slice(2)) {
     console.log(JSON.stringify({ id: run.id, candidate: run.candidate, decision, release, recordedRelease: run.release ?? null, evidenceIntegrity: issues.length ? 'invalid' : 'verified' }, null, 2));
     return issues.length ? 2 : run.options?.mode === 'exploration' ? explorationExit(decision) : exitCode(decision, release);
   }
-  if (!['run', 'explore'].includes(positionals[0]) || positionals.length !== 1 || !values.repo) throw new Error('Use: npm run atm -- run|explore --repo /path/to/ImpactGraph');
+  if (!['run', 'explore'].includes(positionals[0]) || positionals.length !== 1 || !values.repo) throw new Error('Use: npm run atm -- run|explore --repo /path/to/DAD-Main');
   const discovery = positionals[0] === 'explore';
   if (discovery && (values.ai || values['require-ai'] || values.policy)) throw new Error('Explore uses its own discovery contract; omit --ai, --require-ai and --policy.');
   if (!discovery && values['max-requests'] !== undefined) throw new Error('--max-requests applies only to explore.');

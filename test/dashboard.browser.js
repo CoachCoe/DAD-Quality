@@ -66,6 +66,11 @@ test('dashboard supports run inspection, triage, launch, cancellation and mobile
   await page.getByRole('button', { name: 'Run validation' }).click();
   await page.getByLabel('Commit, branch, or tag').fill('main');
   await page.getByRole('button', { name: 'Start validation' }).click();
+  const cancelButton = await page.getByRole('button', { name: 'Cancel validation' }).elementHandle();
+  await cancelButton.focus();
+  await page.waitForResponse(response => /\/api\/runs\/atm-/.test(response.url()));
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  assert.equal(await cancelButton.evaluate(button => button.isConnected && document.activeElement === button), true, 'Polling must preserve the focused run control');
   await page.getByRole('button', { name: 'Cancel validation' }).click();
   await page.getByRole('button', { name: 'Run this revision again' }).waitFor();
   assert.match(await page.locator('#run-detail').innerText(), /Canceled/);

@@ -3,9 +3,9 @@ import { createDashboardServer } from './dashboard.js';
 import { redact } from './core.js';
 
 process.umask(0o077);
-const { values } = parseArgs({ options: { repo: { type: 'string', default: '../ImpactGraph' }, output: { type: 'string', default: '.atm/runs' }, policy: { type: 'string' }, port: { type: 'string', default: '4310' }, help: { type: 'boolean' } } });
+const { values } = parseArgs({ options: { repo: { type: 'string', default: '../DAD-Main' }, output: { type: 'string', default: '.atm/runs' }, policy: { type: 'string' }, port: { type: 'string', default: '4310' }, help: { type: 'boolean' } } });
 if (values.help) {
-  console.log('npm start -- --repo /path/to/ImpactGraph [--port 4310] [--output .atm/runs] [--policy FILE]');
+  console.log('npm start -- --repo /path/to/DAD-Main [--port 4310] [--output .atm/runs] [--policy FILE]');
 } else {
   const port = Number(values.port);
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Port must be between 1 and 65535.');

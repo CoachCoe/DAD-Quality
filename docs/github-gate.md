@@ -1,14 +1,21 @@
 # GitHub acceptance gate
 
-ATM can validate trusted ImpactGraph candidates in GitHub Actions. The integration
+ATM can validate trusted DAD candidates in GitHub Actions. The integration
 implements a **local acceptance gate** on an ephemeral runner. It does not deploy
 staging or production, exercise live integrations, run the optional AI provider,
 or replace existing CI, security, performance or deployment requirements.
 
+The DAD-Main installation uses the durable Worker ledger described in
+[its operations guide](https://github.com/CoachCoe/DAD-Main/blob/dev/docs/atm-ledger.md).
+That guide and DAD-Main's checked-in workflow are authoritative for that installation.
+The Git-backed workflow template below remains supported for other installations;
+do not use its initialization or publication steps to replace DAD-Main's ledger.
+Its existing archive and evidence-key filenames retain `impactgraph` for compatibility.
+
 ## Deferred follow-up
 
 On 2026-10-09, Shawn deferred making **ATM acceptance** a required status check
-on ImpactGraph's `dev` branch. Leave branch protection unchanged until explicitly
+on DAD-Main's `dev` branch. Leave branch protection unchanged until explicitly
 resumed. The workflow may run and report results, but its status is not currently
 an enforced merge requirement. When resumed, add the check while preserving
 existing protections, then verify that a failing ATM result blocks merging.

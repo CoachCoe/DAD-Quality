@@ -80,7 +80,7 @@ export async function collectFindings(root, runs, triage = {}) {
             const id = digest(`${run.candidate?.source}\ndiscovery\n${item.id}`).slice(0, 24);
             const finding = groups.get(id) ?? { id, source: run.candidate?.source, check: 'discovery', title: item.title, kind: 'Agent hypothesis', firstSeen: run.startedAt, occurrences: [], severity: 'unassessed', disposition: 'untriaged', note: '', audit: [] };
             Object.assign(finding, { lastSeen: run.startedAt, lastRunId: run.id, discovery: item });
-            finding.occurrences.push({ runId: run.id, revision: run.candidate?.revision, status: item.status, summary: item.basis, evidence: result.evidence });
+            finding.occurrences.push({ runId: run.id, revision: run.candidate?.revision, status: item.status, summary: item.basis, evidence: result.evidence, finishedAt: result.finishedAt });
             groups.set(id, finding);
           }
         } catch { /* Invalid reports are surfaced by run detail/integrity, never trusted as findings. */ }
@@ -112,15 +112,15 @@ export async function collectFindings(root, runs, triage = {}) {
         }
         finding.lastSeen = run.startedAt;
         finding.lastRunId = run.id;
-        finding.occurrences.push({ runId: run.id, revision: run.candidate?.revision, status: result.status, summary: result.summary, evidence: result.evidence ?? [] });
+        finding.occurrences.push({ runId: run.id, revision: run.candidate?.revision, status: result.status, summary: result.summary, evidence: result.evidence ?? [], finishedAt: result.finishedAt });
       }
     }
   }
   for (const finding of groups.values()) {
     const saved = triage[finding.id];
     if (saved) Object.assign(finding, saved);
-    // A new failure after resolution reopens triage without changing historical results.
-    if (finding.disposition === 'resolved' && finding.lastSeen > (finding.updatedAt ?? '')) finding.disposition = 'reopened';
+    // A run can start before triage and finish with a new failure afterwards.
+    if (['resolved', 'dismissed'].includes(finding.disposition) && finding.occurrences.some(o => (o.finishedAt ?? finding.lastSeen) > (finding.updatedAt ?? ''))) finding.disposition = 'reopened';
     const lastRun = runs.find(r => r.id === finding.lastRunId);
     const later = runs.filter(r => r.startedAt > finding.lastSeen && r.candidate?.source === lastRun?.candidate?.source && r.finishedAt && statuses.has(r.decision.status));
     const latestComparable = later.find(r => r.results.some(c => c.id === finding.check && c.finishedAt));

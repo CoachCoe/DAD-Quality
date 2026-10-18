@@ -14,6 +14,7 @@ export function redact(value) {
     .replace(/(postgres(?:ql)?:\/\/[^:\s/]+:)[^@\s]+@/gi, '$1[REDACTED]@')
     .replace(/([?#&](?:token|secret|key|code)=)[^\s&#"']+/gi, '$1[REDACTED]')
     .replace(/\b(?:sk|rk)-(?:proj-)?[A-Za-z0-9_-]{12,}\b/g, '[REDACTED]')
+    .replace(/\b(?:sk|rk|pk)_(?:test|live)_[A-Za-z0-9]+\b|\bwhsec_[A-Za-z0-9]+\b/g, '[REDACTED]')
     .replace(/((?:authorization|cookie|set-cookie)\s*[:=]\s*)[^\r\n]+/gi, '$1[REDACTED]');
 }
 
@@ -93,7 +94,13 @@ export class Run {
   }
   async evidence(relative, content) {
     const file = path.join(this.dir, 'evidence', relative);
-    await writeFile(file, redact(content), { mode: 0o600 });
+    let safe = redact(content);
+    if (relative.endsWith('.json')) {
+      try {
+        safe = JSON.stringify(JSON.parse(content), (_key, value) => typeof value === 'string' ? redact(value) : value, 2);
+      } catch { /* Retain malformed diagnostic payloads as redacted text. */ }
+    }
+    await writeFile(file, safe, { mode: 0o600 });
     return this.reference(`evidence/${relative}`);
   }
   async reference(relative) {

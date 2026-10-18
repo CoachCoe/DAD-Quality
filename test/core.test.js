@@ -25,10 +25,32 @@ test('secrets are redacted from text evidence', () => {
   for (const secret of ['private-password', 'abc-secret', 'Bearer hidden', 'session=hidden', 'sk-proj-abcdefghijklmnop']) assert.equal(output.includes(secret), false);
 });
 
+test('Stripe credentials are redacted from logs and source excerpts', () => {
+  for (const prefix of ['sk_test_', 'sk_live_', 'rk_test_', 'rk_live_', 'pk_test_', 'pk_live_', 'whsec_']) {
+    const credential = `${prefix}synthetic1234567890`;
+    assert.equal(redact(`credential=${credential}; failed`), 'credential=[REDACTED]; failed');
+  }
+});
+
 test('reports escape hostile page content', () => {
   const output = reportHTML({ id: '<img src=x onerror=alert(1)>', startedAt: 'now', results: [{ id: 'browser', status: 'failed', summary: '<script>bad()</script>' }], decision: { status: 'failed', reasons: [] } });
   assert.equal(output.includes('<script>bad()'), false);
   assert.equal(output.includes('&lt;script&gt;'), true);
+});
+
+test('redaction preserves JSON structure when page text resembles a credential header', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'atm-json-evidence-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const run = await Run.create(root, {}, ['browser']);
+  const payload = { observation: 'Cookie: session=synthetic-secret', action: { name: 'Continue', step: 2 }, checks: [true, null] };
+  const item = await run.evidence('agent-events.json', JSON.stringify(payload));
+  const bytes = await readFile(path.join(run.dir, item.path));
+  const saved = JSON.parse(bytes);
+  assert.equal(saved.observation, 'Cookie: [REDACTED]');
+  assert.deepEqual(saved.action, payload.action);
+  assert.deepEqual(saved.checks, payload.checks);
+  assert.equal(item.sha256, digest(bytes));
+  assert.equal(bytes.includes('synthetic-secret'), false);
 });
 
 test('run persists failures and verifiable evidence before completion', async t => {
