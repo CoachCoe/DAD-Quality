@@ -94,7 +94,13 @@ export class Run {
   }
   async evidence(relative, content) {
     const file = path.join(this.dir, 'evidence', relative);
-    await writeFile(file, redact(content), { mode: 0o600 });
+    let safe = redact(content);
+    if (relative.endsWith('.json')) {
+      try {
+        safe = JSON.stringify(JSON.parse(content), (_key, value) => typeof value === 'string' ? redact(value) : value, 2);
+      } catch { /* Retain malformed diagnostic payloads as redacted text. */ }
+    }
+    await writeFile(file, safe, { mode: 0o600 });
     return this.reference(`evidence/${relative}`);
   }
   async reference(relative) {

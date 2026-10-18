@@ -38,6 +38,21 @@ test('reports escape hostile page content', () => {
   assert.equal(output.includes('&lt;script&gt;'), true);
 });
 
+test('redaction preserves JSON structure when page text resembles a credential header', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'atm-json-evidence-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const run = await Run.create(root, {}, ['browser']);
+  const payload = { observation: 'Cookie: session=synthetic-secret', action: { name: 'Continue', step: 2 }, checks: [true, null] };
+  const item = await run.evidence('agent-events.json', JSON.stringify(payload));
+  const bytes = await readFile(path.join(run.dir, item.path));
+  const saved = JSON.parse(bytes);
+  assert.equal(saved.observation, 'Cookie: [REDACTED]');
+  assert.deepEqual(saved.action, payload.action);
+  assert.deepEqual(saved.checks, payload.checks);
+  assert.equal(item.sha256, digest(bytes));
+  assert.equal(bytes.includes('synthetic-secret'), false);
+});
+
 test('run persists failures and verifiable evidence before completion', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-unit-'));
   t.after(() => rm(root, { recursive: true, force: true }));
