@@ -85,7 +85,7 @@ export function normalizeFailure(value) {
     .slice(0, 1000);
 }
 
-export function failureSignatures(result, logs) {
+function failureSignatures(result, logs) {
   const text = stripANSI(logs);
   const named = text
     .split('\n')

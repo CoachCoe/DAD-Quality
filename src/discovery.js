@@ -44,7 +44,7 @@ const actions = [
   'search_memory',
   'read_memory',
 ];
-export const discoveryTool = {
+const discoveryTool = {
   type: 'function',
   name: 'investigate_application',
   strict: true,

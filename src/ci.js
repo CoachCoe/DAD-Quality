@@ -131,7 +131,7 @@ export function mergeFindings(ledger, incoming) {
 
 // Upload only the manifest, report and declared evidence, never the source tree,
 // compose configuration, database volumes, encryption key or other run files.
-export async function evidenceBundle(run, publicKey) {
+async function evidenceBundle(run, publicKey) {
   const issues = await verifyEvidence(run.dir, run.data);
   if (!(await lstat(path.join(run.dir, 'evidence'))).isDirectory())
     fail('Evidence directory must not be a symbolic link.');

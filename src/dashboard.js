@@ -16,7 +16,7 @@ import { loadPolicy } from './policy.js';
 
 const assets = fileURLToPath(new URL('../web/', import.meta.url));
 const MAX_BODY = 16_384;
-export class HttpError extends Error {
+class HttpError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;

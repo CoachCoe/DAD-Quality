@@ -3,7 +3,7 @@ import { openBrowser } from './browser.js';
 import { RunError, digest, redact } from './core.js';
 import { modelConfig, requireModelConfig, tinkerToolProvider } from './model-provider.js';
 
-export const scenario = {
+const scenario = {
   id: 'public-donation-discovery',
   version: 1,
   goal: 'Starting at the public home page, find the donation form. Confirm that a guest can reach it and see an email field and a monthly giving option. Do not submit a form or make a payment.',

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { scenarios } from './scenarios.js';
 import { validatePerformanceProfile } from './performance-config.js';
 
-export const defaultPolicyPath = fileURLToPath(new URL('../policies/impactgraph-local.json', import.meta.url));
+const defaultPolicyPath = fileURLToPath(new URL('../policies/impactgraph-local.json', import.meta.url));
 export const evidenceRequirements = {
   snapshot: ['candidate.json'],
   docker: ['docker.log', 'compose-version.log'],
@@ -20,7 +20,7 @@ export const evidenceRequirements = {
   performance: ['performance.json'],
   discovery: ['discovery.json', 'discovery-trace.zip'],
 };
-export function canonical(value) {
+function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   if (value && typeof value === 'object')
     return `{${Object.keys(value)

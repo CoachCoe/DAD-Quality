@@ -7,12 +7,12 @@ import { verifyEvidence, RunError } from './core.js';
 import { hashPolicy } from './policy.js';
 import { validatePerformanceProfile } from './performance-config.js';
 
-export const targets = [
+const targets = [
   { name: 'content', path: '/api/donor/public/content', signedIn: false },
   { name: 'dashboard', path: '/api/donor/me/dashboard', signedIn: true },
   { name: 'gifts', path: '/api/donor/me/gifts?offset=0', signedIn: true },
 ];
-export function environmentFingerprint(docker = {}) {
+function environmentFingerprint(docker = {}) {
   return {
     kind: process.env.GITHUB_ACTIONS === 'true' ? 'github-actions' : 'local',
     platform: os.platform(),
