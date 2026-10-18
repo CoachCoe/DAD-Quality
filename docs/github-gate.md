@@ -12,12 +12,11 @@ The Git-backed workflow template below remains supported for other installations
 do not use its initialization or publication steps to replace DAD-Main's ledger.
 Its existing archive and evidence-key filenames retain `impactgraph` for compatibility.
 
-## Deferred follow-up
+## Branch protection
 
-On 2026-10-09, Shawn deferred making **ATM acceptance** a required status check
-on DAD-Main's `dev` branch. Leave branch protection unchanged until explicitly
-resumed. The workflow may run and report results, but its status is not currently
-an enforced merge requirement. When resumed, add the check while preserving
+**ATM acceptance** is not a required status check on DAD-Main's `dev` branch: the
+workflow runs and reports results, but does not block merging. Making it required
+is a deliberate owner decision; when it is made, add the check while preserving
 existing protections, then verify that a failing ATM result blocks merging.
 
 ## Installation
@@ -28,7 +27,7 @@ existing protections, then verify that a failing ATM result blocks merging.
    the same full, reviewed ATM commit SHA. The runner, policy and encryption
    recipient are loaded from that pin, not from the candidate.
 2. Explicitly initialize `ledger.json` on the target's `atm-state` branch:
-   `npm run github-ci -- init --state /path/to/state/ledger.json --source github:CoachCoe/ImpactGraph`.
+   `npm run github-ci -- init --state /path/to/state/ledger.json --source github:OWNER/REPO`.
    Commit and push this branch before running the workflow. Missing or corrupt
    state is an error; normal runs never initialize or reset it. Initializing CI
    establishes a separate GitHub history; it does not delete or resolve the
@@ -98,7 +97,7 @@ Review the decrypted evidence before classifying or closing a finding. In a clea
 worktree of the latest `atm-state` branch:
 
 ```sh
-npm run github-ci -- triage --source github:CoachCoe/ImpactGraph \
+npm run github-ci -- triage --source github:OWNER/REPO \
   --state /path/to/state/ledger.json --finding FINDING_ID \
   --severity medium --disposition resolved --actor YOUR_GITHUB_LOGIN \
   --note-file /private/path/to/review-note.txt
