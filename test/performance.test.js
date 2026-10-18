@@ -66,15 +66,28 @@ test('real HTTP load detects slow bodies, error responses and candidate regressi
     assert.equal(req.headers.cookie, req.url.includes('/public/') ? undefined : cookies[0]);
     res.writeHead(failing ? 503 : 200, { 'content-type': 'application/json' });
     res.write(body.slice(0, 1));
-    setTimeout(() => res.end(body.slice(1)), slow ? 80 : 1);
+    setTimeout(() => res.end(body.slice(1)), slow ? 300 : 1);
   });
-  const options = { origin, cookies, profile: profile(), environment: { host: 'fixture' } };
+  // The budget sits far from both responses, so a busy machine's scheduling delay
+  // cannot move a fast run over it or a slow run under it.
+  const base = profile();
+  const options = {
+    origin,
+    cookies,
+    profile: {
+      ...base,
+      requestTimeoutMs: 1000,
+      phases: base.phases.map(p => ({ ...p, durationMs: p.name === 'warmup' ? 100 : 500 })),
+      criteria: { ...base.criteria, maxP95Ms: 150 },
+    },
+    environment: { host: 'fixture' },
+  };
   const fast = await measurePerformance(options);
   assert.equal(fast.assessment.status, 'within-budget');
   slow = true;
   const degraded = await measurePerformance(options);
   assert.equal(degraded.assessment.status, 'exceeded');
-  assert.ok(degraded.phases[1].p95Ms >= 75);
+  assert.ok(degraded.phases[1].p95Ms >= 290);
   assert.equal(comparePerformance(degraded, fast).regression, true);
   failing = true;
   const broken = await measurePerformance(options);
