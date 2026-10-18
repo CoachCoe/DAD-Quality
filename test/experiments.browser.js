@@ -10,8 +10,9 @@ const control = (observation, label) => observation.controls.find(c => c.label =
 
 test('code-informed persistence investigation reproduces lost writes on a clean fixture and exports honest coverage', async t => {
   const app = await benchmarkApplication('lost-save');
-  const browser = await openDiscoveryBrowser({ ...app, signal });
-  t.after(async () => { await browser.close(); await app.close(); });
+  let browser;
+  t.after(async () => { await browser?.close(); await app.close(); });
+  browser = await openDiscoveryBrowser({ ...app, signal });
   let step = 0;
   const report = { requests: 0, tokens: 0, pages: [], observations: [], investigations: [], events: [], findings: [] };
   const provider = async ({ observation, sourceEvidence }) => {
@@ -39,8 +40,9 @@ test('code-informed persistence investigation reproduces lost writes on a clean 
 
 test('cross-user mutation replay includes the earlier actor actions and restores working state without duplicate writes', async t => {
   const app = await benchmarkApplication('cross-actor');
-  const browser = await openDiscoveryBrowser({ ...app, signal });
-  t.after(async () => { await browser.close(); await app.close(); });
+  let browser;
+  t.after(async () => { await browser?.close(); await app.close(); });
+  browser = await openDiscoveryBrowser({ ...app, signal });
   await browser.act(action('switch_actor', { target: 'donor-a' }));
   let observation = await browser.observe();
   await browser.act(action('fill', { target: control(observation, 'Public name'), value: 'Changed' }));
@@ -57,8 +59,9 @@ test('cross-user mutation replay includes the earlier actor actions and restores
 
 test('typed field replay verifies the same observed field and healthy saves satisfy both browser and persisted checks', async t => {
   const app = await benchmarkApplication();
-  const browser = await openDiscoveryBrowser({ ...app, signal });
-  t.after(async () => { await browser.close(); await app.close(); });
+  let browser;
+  t.after(async () => { await browser?.close(); await app.close(); });
+  browser = await openDiscoveryBrowser({ ...app, signal });
   await browser.act(action('switch_actor', { target: 'donor-a' }));
   let observation = await browser.observe();
   await browser.act(action('fill', { target: control(observation, 'Public name'), value: 'Changed' }));
@@ -73,8 +76,9 @@ test('typed field replay verifies the same observed field and healthy saves sati
 test('a failed fixture restoration cannot be followed by a successful exploration', async t => {
   const app = await benchmarkApplication('lost-save');
   const fixture = { ...app.fixture, replay: async () => { const restore = await app.fixture.replay(); return async () => { await restore(); throw new Error('Storage unavailable'); }; } };
-  const browser = await openDiscoveryBrowser({ ...app, fixture, signal });
-  t.after(async () => { await browser.close(); await app.close(); });
+  let browser;
+  t.after(async () => { await browser?.close(); await app.close(); });
+  browser = await openDiscoveryBrowser({ ...app, fixture, signal });
   await browser.observe();
   await assert.rejects(browser.reproduce(action('report', { expectation: 'text_present', text: 'Missing' })), /restoration failed/);
   await assert.rejects(browser.observe(), /cannot continue/);
@@ -83,8 +87,9 @@ test('a failed fixture restoration cannot be followed by a successful exploratio
 for (const [fault, name, field, expected] of [['accept-invalid', '   ', 'public_name', 'Alex'], ['duplicate-write', 'Changed', 'save_count', '1']]) {
   test(`benchmark oracle independently scores ${fault} without exposing fault labels to the investigator`, async t => {
     const app = await benchmarkApplication(fault);
-    const browser = await openDiscoveryBrowser({ ...app, signal });
-    t.after(async () => { await browser.close(); await app.close(); });
+    let browser;
+    t.after(async () => { await browser?.close(); await app.close(); });
+    browser = await openDiscoveryBrowser({ ...app, signal });
     await browser.act(action('switch_actor', { target: 'donor-a' }));
     let observation = await browser.observe();
     await browser.act(action('fill', { target: control(observation, 'Public name'), value: name }));

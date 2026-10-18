@@ -84,8 +84,9 @@ test('three real-browser runs remember persistence, investigate isolation, then 
   }
   assert.equal(completed[2].applicationMemory.needsRevalidation, 2);
   const dashboard = await createDashboardServer({ repo: sourceRoot, root, port: 0 });
-  const browser = await chromium.launch({ headless: true });
-  t.after(async () => { await browser.close(); await dashboard.close(); });
+  let browser;
+  t.after(async () => { await browser?.close(); await dashboard.close(); });
+  browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 960 } });
   const page = await context.newPage();
   await page.goto(dashboard.origin); await page.getByRole('button', { name: 'View evidence', exact: true }).click();

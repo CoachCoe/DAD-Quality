@@ -12,8 +12,9 @@ const plan = checks => ({ capability: 'Profile', behavior: 'Persistence and isol
 
 async function investigate(t, fault, checks) {
   const app = await benchmarkApplication(fault);
-  const browser = await openDiscoveryBrowser({ ...app, signal: new AbortController().signal });
-  t.after(async () => { await browser.close(); await app.close(); });
+  let browser;
+  t.after(async () => { await browser?.close(); await app.close(); });
+  browser = await openDiscoveryBrowser({ ...app, signal: new AbortController().signal });
   const report = { requests: 0, tokens: 0, pages: [], observations: [], investigations: [], events: [], findings: [] };
   let planned = false, reported = false;
   const provider = async ({ observation, activeExperiment }) => {

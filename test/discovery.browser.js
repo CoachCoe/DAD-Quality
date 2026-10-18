@@ -86,8 +86,9 @@ test('switching actors isolates IndexedDB and Cache Storage and preserves every 
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-discovery-actors-'));
   const run = await Run.create(root, { mode: 'exploration' }, ['discovery'], discoveryPolicy());
   const result = { evidence: [] };
-  const browser = await openDiscoveryBrowser({ origin: app.origin, actors: actors.map(a => ({ ...a, entry: '/storage' })), signal, run, result });
-  t.after(async () => { await browser.close(); await rm(root, { recursive: true, force: true }); });
+  let browser;
+  t.after(async () => { await browser?.close(); await rm(root, { recursive: true, force: true }); });
+  browser = await openDiscoveryBrowser({ origin: app.origin, actors: actors.map(a => ({ ...a, entry: '/storage' })), signal, run, result });
   for (const id of ['guest', 'donor-a', 'donor-b']) {
     if (id !== 'guest') await browser.act(action('switch_actor', { target: id }));
     const observation = await browser.observe();
@@ -150,8 +151,9 @@ test('discovery loop records a defect in real browser evidence and dashboard exp
   await run.finish();
   assert.equal(report.findings[0].status, 'reproduced');
   const dashboard = await createDashboardServer({ repo: '/synthetic', root, port: 0 });
-  const chromiumBrowser = await chromium.launch({ headless: true });
-  t.after(async () => { await chromiumBrowser.close(); await dashboard.close(); await rm(root, { recursive: true, force: true }); });
+  let chromiumBrowser;
+  t.after(async () => { await chromiumBrowser?.close(); await dashboard.close(); await rm(root, { recursive: true, force: true }); });
+  chromiumBrowser = await chromium.launch({ headless: true });
   const context = await chromiumBrowser.newContext({ viewport: { width: 1280, height: 960 } });
   const page = await context.newPage();
   await page.goto(dashboard.origin);

@@ -27,8 +27,9 @@ test('dashboard supports run inspection, triage, launch, cancellation and mobile
     await new Promise(resolve => options.signal.addEventListener('abort', resolve, { once: true }));
     await run.step('cleanup', async () => ({ summary: 'Cleaned up.' })); run.data.canceledAt = new Date().toISOString(); await run.finish();
   } });
-  const browser = await chromium.launch({ headless: true });
-  t.after(async () => { await browser.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
+  let browser;
+  t.after(async () => { await browser?.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
+  browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1050 } });
   const page = await context.newPage();
   const errors = [];
@@ -86,8 +87,9 @@ test('dashboard supports run inspection, triage, launch, cancellation and mobile
 test('dashboard shows useful empty and malformed-run states', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-ui-empty-'));
   const app = await createDashboardServer({ repo: '/synthetic/DAD-Main', root, port: 0 });
-  const browser = await chromium.launch({ headless: true });
-  t.after(async () => { await browser.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
+  let browser;
+  t.after(async () => { await browser?.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
+  browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   await page.goto(app.origin);
   await page.getByRole('heading', { name: 'Your next release starts here.' }).waitFor();
@@ -112,8 +114,9 @@ test('policy evidence view distinguishes passing checks from blocked acceptance'
   }
   await run.finish();
   const app = await createDashboardServer({ repo: run.data.candidate.source, root, port: 0 });
-  const browser = await chromium.launch({ headless: true });
-  t.after(async () => { await browser.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
+  let browser;
+  t.after(async () => { await browser?.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
+  browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(app.origin);
@@ -147,8 +150,9 @@ test('performance view compares candidates, remains accessible on mobile and rej
     await run.finish(); latest = run;
   }
   const app = await createDashboardServer({ repo: '/synthetic/DAD-Main', root, port: 0 });
-  const browser = await chromium.launch({ headless: true });
-  t.after(async () => { await browser.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
+  let browser;
+  t.after(async () => { await browser?.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
+  browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1050 } });
   const page = await context.newPage();
   await page.goto(app.origin);
