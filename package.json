@@ -17,16 +17,19 @@
     "test:fixture": "node --test test/fixture.postgres.js",
     "test:live": "node scripts/verify-dashboard.js",
     "check": "node scripts/check.js",
+    "typecheck": "tsc --project jsconfig.json",
     "lint": "biome check --error-on-warnings .",
     "format": "biome format --write .",
     "benchmark:discovery": "node --env-file-if-exists=.atm/agent.env scripts/benchmark-discovery.js",
     "model:check": "node --env-file-if-exists=.atm/agent.env scripts/check-model.js"
   },
   "dependencies": {
-    "playwright": "1.64.0"
+    "playwright": "1.64.1"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.13.0",
-    "@biomejs/biome": "2.5.15"
+    "@axe-core/playwright": "4.14.0",
+    "@biomejs/biome": "2.5.15",
+    "@types/node": "26.6.5",
+    "typescript": "7.0.2"
   }
 }

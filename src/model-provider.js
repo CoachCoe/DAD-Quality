@@ -1,5 +1,8 @@
 import { RunError } from './core.js';
 
+/**
+ * @param {{providerName?: string, model?: string, apiKey?: string, env?: NodeJS.ProcessEnv}} [options]
+ */
 export function modelConfig({ providerName, model, apiKey, env = process.env } = {}) {
   const name = providerName ?? env.ATM_PROVIDER ?? 'openai';
   if (!['openai', 'tinker'].includes(name)) throw new RunError('ATM_PROVIDER/--provider must be openai or tinker.');
