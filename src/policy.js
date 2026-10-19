@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { scenarios } from './scenarios.js';
 import { validatePerformanceProfile } from './performance-config.js';
-import { isRegisteredAdapter } from './targets.js';
+import { isRegisteredAdapter } from './targets/index.js';
 
 const defaultPolicyPath = fileURLToPath(new URL('../policies/impactgraph-local.json', import.meta.url));
 export const evidenceRequirements = {

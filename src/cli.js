@@ -7,7 +7,7 @@ import { evaluate, redact, verifyEvidence } from './core.js';
 import { executeRun } from './runner.js';
 import { executeDiscovery } from './discovery-runner.js';
 import { assessRelease } from './release.js';
-import { resolveTarget } from './targets.js';
+import { resolveTarget } from './targets/index.js';
 
 const help = `ATM — local application quality runner
 

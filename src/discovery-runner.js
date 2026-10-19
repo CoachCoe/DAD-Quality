@@ -8,7 +8,7 @@ import { buildApplicationMemory } from './application-memory.js';
 import { sourceReader } from './source-reader.js';
 import { listRuns } from './history.js';
 import { hashPolicy, evidenceRequirements } from './policy.js';
-import { resolveTarget } from './targets.js';
+import { resolveTarget } from './targets/index.js';
 
 export function discoveryPolicy(target = 'dad') {
   const { policyId, adapterId } = resolveTarget(target);
