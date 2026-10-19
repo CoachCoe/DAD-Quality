@@ -263,3 +263,30 @@ test('Tinker backfill does not mask a missing discriminator', async () => {
     e => /Tinker returned an invalid action\./.test(e.message) && e.status === 'inconclusive' && e.tokens === 26,
   );
 });
+
+test('OpenAI transport, malformed and unaccounted responses stay inconclusive without echoing the key', async () => {
+  const openai = fetchImpl =>
+    discoveryProvider({ providerName: 'openai', apiKey: 'sk-test-only-key', model: 'test-model', fetchImpl });
+  const reply = (value, ok = true) => openai(async () => ({ ok, status: 500, json: async () => value }));
+  const call = { type: 'function_call', name: 'investigate_application', arguments: JSON.stringify(action) };
+  for (const [decide, pattern] of [
+    [
+      openai(async () => {
+        throw new Error('connect ECONNREFUSED sk-test-only-key');
+      }),
+      /Could not reach OpenAI/,
+    ],
+    [openai(async () => ({ ok: true, json: async () => JSON.parse('{') })), /invalid response/],
+    [reply({ status: 'incomplete', output: [call] }), /exactly one supported action/],
+    [reply({ status: 'completed', output: [{ ...call, arguments: '{}' }] }), /invalid action/],
+    [reply({ status: 'completed', output: [call] }), /omitted token accounting/],
+    [reply({}, false), /HTTP 500/],
+  ])
+    await assert.rejects(
+      decide(input),
+      error => pattern.test(error.message) && error.status === 'inconclusive' && !error.message.includes('sk-test'),
+    );
+  const decision = await reply({ status: 'completed', output: [call], usage: { total_tokens: 12 } })(input);
+  assert.equal(decision.tokens, 12);
+  assert.deepEqual(decision.action, action);
+});

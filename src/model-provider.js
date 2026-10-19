@@ -110,3 +110,63 @@ export function tinkerToolProvider({
     };
   };
 }
+
+export function openAIToolProvider({
+  apiKey,
+  model,
+  tool,
+  instructions,
+  maxOutputTokens,
+  validate,
+  fetchImpl = fetch,
+}) {
+  if (!apiKey || !model) throw new RunError('OpenAI requires OPENAI_API_KEY and an explicit model.');
+  return async ({ input, signal }) => {
+    let response;
+    try {
+      response = await fetchImpl('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        signal,
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          store: false,
+          instructions,
+          input,
+          tools: [tool],
+          tool_choice: { type: 'function', name: tool.name },
+          parallel_tool_calls: false,
+          max_output_tokens: maxOutputTokens,
+        }),
+      });
+    } catch {
+      throw new RunError(signal?.aborted ? 'OpenAI request canceled or timed out.' : 'Could not reach OpenAI.');
+    }
+    if (!response.ok) throw new RunError(`OpenAI returned HTTP ${response.status}.`);
+    let body;
+    try {
+      body = await response.json();
+    } catch {
+      throw new RunError('OpenAI returned an invalid response.');
+    }
+    const calls = Array.isArray(body?.output) ? body.output.filter(item => item?.type === 'function_call') : [];
+    if (body?.status !== 'completed' || calls.length !== 1 || calls[0].name !== tool.name)
+      throw new RunError('OpenAI did not complete exactly one supported action.');
+    let action;
+    try {
+      action = validate(JSON.parse(calls[0].arguments));
+    } catch {
+      throw new RunError('OpenAI returned an invalid action.');
+    }
+    const total = body.usage?.total_tokens;
+    return {
+      action,
+      tokens: Number.isSafeInteger(total) && total >= 0 ? total : undefined,
+      usage: body.usage,
+      responseId: typeof body.id === 'string' ? body.id : undefined,
+    };
+  };
+}
+
+export const toolProvider = options =>
+  (options.providerName === 'tinker' ? tinkerToolProvider : openAIToolProvider)(options);

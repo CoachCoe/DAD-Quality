@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { explore, openAIProvider, validateAction } from '../src/agent.js';
+import { explore, publicProvider, validateAction } from '../src/agent.js';
+import { openAIToolProvider } from '../src/model-provider.js';
 import { allowedRequest } from '../src/browser.js';
 
 const action = { action: 'done', role: 'link', name: '' };
@@ -60,7 +61,8 @@ test('network policy checks exact origins, credentials, methods and schemes', ()
 
 test('provider validates response and sends only bounded tool requests', async () => {
   let payload;
-  const provider = openAIProvider({
+  const provider = publicProvider({
+    providerName: 'openai',
     apiKey: 'test-only',
     model: 'test-model',
     fetchImpl: async (url, options) => {
@@ -83,7 +85,8 @@ test('provider validates response and sends only bounded tool requests', async (
 });
 
 test('provider errors do not echo secrets or become passes', async () => {
-  const provider = openAIProvider({
+  const provider = publicProvider({
+    providerName: 'openai',
     apiKey: 'secret',
     model: 'test-model',
     fetchImpl: async () => ({ ok: false, status: 401 }),
@@ -92,5 +95,5 @@ test('provider errors do not echo secrets or become passes', async () => {
     provider({ observation: {}, history: [], signal: base.signal }),
     e => e.status === 'inconclusive' && !e.message.includes('secret'),
   );
-  assert.throws(() => openAIProvider({ model: 'test-model' }));
+  assert.throws(() => openAIToolProvider({ model: 'test-model' }), /OPENAI_API_KEY/);
 });
