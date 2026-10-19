@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { scenarios } from './scenarios.js';
 import { validatePerformanceProfile } from './performance-config.js';
+import { isRegisteredAdapter } from './targets/index.js';
 
 const defaultPolicyPath = fileURLToPath(new URL('../policies/impactgraph-local.json', import.meta.url));
 export const evidenceRequirements = {
@@ -40,7 +41,7 @@ export function validatePolicy(policy) {
     policy.schemaVersion !== 1 ||
     !/^[a-z0-9-]{1,80}$/.test(policy.id ?? '') ||
     !/^\d+\.\d+\.\d+$/.test(policy.version ?? '') ||
-    policy.adapter !== 'impactgraph' ||
+    !isRegisteredAdapter(policy.adapter) ||
     !['local-acceptance', 'exploration'].includes(policy.scope)
   )
     throw new Error('Unsupported policy identity, version, adapter or scope.');

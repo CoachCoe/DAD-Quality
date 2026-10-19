@@ -1,0 +1,32 @@
+{
+  "project_type": "Node.js ESM CLI/harness (ATM application-quality + autonomous discovery runner) with a browser dashboard; drives Playwright Chromium and Docker Compose",
+  "language": "JavaScript (ESM, type: module)",
+  "build_system": "npm; no compile/bundle step. Biome 2.5.15 is the linter/formatter (biome.json). Playwright 1.64.0 is the only runtime dep.",
+  "test_framework": "node:test (built-in). Unit: `node --test test/*.test.js`. Browser: `node --test test/*.browser.js` (real Chromium, no API charges). Postgres/Docker fixture: `node --test test/fixture.postgres.js`.",
+  "build_command": "npm run lint   (biome check --error-on-warnings .; there is no separate compile step)",
+  "test_command": "npm test   (node --test test/*.test.js)",
+  "verification_instructions": "From the worktree root run: `npm run lint` (must be clean, errors on warnings); `npm test` (all unit tests pass); for the benchmark smoke run `node --test test/benchmark-adapter.test.js` with NO OPENAI_API_KEY/ATM_MODEL and Docker stopped. Do NOT run a live model call. Docker/Postgres (test:fixture, test:browser) are NOT required for this change. Baseline before changes: lint clean, 101 unit tests pass.",
+  "snapshot_or_generated_files": null,
+  "environment_constraints": "Node >=22 (v24). Package is ESM. The benchmark path must run WITHOUT Docker and WITHOUT a model API key. Do NOT attempt live model calls (no API key available). Commit locally only; never push. Worktree cwd: step agents' cwd is the parent workspace, so always use absolute paths and `git -C /Users/shawncoe/Documents/dev/DAD/atm/.worktrees/move2-generic-targets`.",
+  "contribution_requirements": "ESM imports only. Biome-clean (error-on-warnings). Working/process notes go under git-ignored docs/working/; tracked docs/ is durable product docs only. Do NOT rename DAD's retained `impactgraph` adapter/policy/evidence-key identifiers (documented in README.md and docs/github-gate.md for ledger/finding compatibility). Do NOT weaken any evidence/digest/schema validation in policy.js. Do NOT touch scenarios.js, agent.js, or the deterministic browser.js journeys/runner.js run pipeline beyond threading target/cookie config.",
+  "key_patterns": "Adapters are plain classes constructed as `(run, options)`. The discovery runner (src/discovery-runner.js executeDiscovery) drives an adapter via: settable `adapter.signal`; provisioning methods snapshot/docker/build/database/deploy(result) each returning {summary} and pushing evidence; `adapter.publicOrigin` (loopback http origin, pathname must be `/`); `adapter.discoveryFixture()` -> array of actor descriptors {id, description, entry?, cookie?}; optional `adapter.source` (path for sourceReader) ; optional `adapter.discoveryReplayFixture()` -> replayFixture object or undefined; `cleanup(result)`. discovery-browser.js degrades gracefully when fixture.replay/inspect are absent. Policy identity today: discoveryPolicy() bakes id 'impactgraph-discovery' + adapter 'impactgraph'; policy.js validatePolicy throws unless adapter === 'impactgraph' (line ~43). The cookie name is hard-coded 'dad_donor_session' in discovery-browser.js bootstrap (~line 106). Benchmark app (src/discovery-benchmark.js benchmarkApplication(fault='healthy')) returns {origin, actors, fixture, judge, close}; actors authenticate by cookie VALUE substring test-a/test-b; in-process loopback http server, NO Docker. scripts/benchmark-discovery.js shows how to write benchmarkSource/benchmarkContract into run.dir/source and build a candidate.",
+  "build_command_notes": "No compiler. Lint IS the build gate.",
+  "relevant_files": [
+    "src/discovery-runner.js (executeDiscovery; discoveryPolicy() bakes impactgraph ids ~lines 25-27/66; adapterFactory default ~line 53; Run.create adapter:'impactgraph' ~line 66)",
+    "src/policy.js (validatePolicy adapter lock ~line 43; default policy path ~line 7; keep all other validation strict)",
+    "src/discovery-browser.js (bootstrap cookie hard-code ~line 106)",
+    "src/dad.js (DadAdapter; discoveryFixture() builds guest+donor-a+donor-b actors with cookie=token)",
+    "src/cli.js (parseArgs options ~lines 46-58; explore vs run dispatch; --repo requirement ~line 87; executeDiscovery call ~line 103)",
+    "src/discovery-benchmark.js (benchmarkApplication, benchmarkContract, benchmarkSource, benchmarkFaults, benchmarkMetrics; PATTERN to study)",
+    "scripts/benchmark-discovery.js (PATTERN: provisioning the benchmark app, writing source, candidate shape)",
+    "src/discovery-fixture.js (replayFixture shape)",
+    "src/runner.js (deterministic run pipeline; stays DAD-only, do NOT generalize)",
+    "test/policy.test.js (policy validation test patterns; update to cover registered non-impactgraph adapter)",
+    "test/adapter.test.js (DadAdapter test patterns)",
+    "test/discovery.test.js (executeDiscovery with adapterFactory mocks; discoveryPolicy() assertions)",
+    "test/benchmark-cli.browser.js (benchmark CLI smoke pattern with provider preload stub)",
+    "policies/impactgraph-local.json (default file policy; adapter:'impactgraph' must still validate)",
+    "README.md + docs/discovery.md + docs/github-gate.md (impactgraph retention rationale)"
+  ],
+  "directory_structure": "src/ holds all runtime modules (cli.js, discovery-runner.js, discovery-browser.js, discovery-benchmark.js, dad.js, policy.js, runner.js, core.js, etc.). test/ holds node:test suites (*.test.js unit, *.browser.js Chromium, fixture.postgres.js). scripts/ holds benchmark-discovery.js and check scripts. policies/ holds JSON policy files. docs/ holds durable docs. .agents/tasks/ holds this plan + FEAT artifacts (outside any commit scope-relative path but inside the worktree)."
+}

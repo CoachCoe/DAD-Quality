@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Run, atomicJSON } from '../src/core.js';
 import { loadPolicy, hashPolicy, validatePolicy } from '../src/policy.js';
+import { discoveryPolicy } from '../src/discovery-runner.js';
 import { evaluateRelease, assessRelease } from '../src/release.js';
 import { Dashboard } from '../src/dashboard.js';
 import { main } from '../src/cli.js';
@@ -81,6 +82,16 @@ test('policy rejects unsupported handlers, weakened contracts, duplicate checks 
     mutate(value);
     assert.throws(() => validatePolicy(value));
   }
+});
+
+test('policy identity accepts any registered adapter but still rejects unregistered ones', () => {
+  const base = discoveryPolicy('dad').definition;
+  const registered = structuredClone(base);
+  registered.adapter = 'impactgraph';
+  assert.doesNotThrow(() => validatePolicy(registered));
+  const unregistered = structuredClone(base);
+  unregistered.adapter = 'unregistered-xyz';
+  assert.throws(() => validatePolicy(unregistered), /adapter/);
 });
 
 test('effective policy snapshots distinguish advisory and required AI without altering the base file', async () => {

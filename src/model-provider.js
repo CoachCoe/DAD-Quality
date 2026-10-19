@@ -23,6 +23,22 @@ export function requireModelConfig(options) {
   return config;
 }
 
+// OpenAI structured output (strict + required:[all]) always returns every field;
+// the Tinker Messages API does not force the model to populate omitted fields.
+// Backfill schema-declared string properties the model left out, defaulting them
+// to '' so the strict validator sees the same shape OpenAI would produce. Drive
+// this purely from the tool's own schema: no contract-specific field names here.
+// A missing discriminator backfilled to '' still fails the validator's enum check,
+// so semantic validation is unchanged.
+function backfillStringFields(schema, input) {
+  const properties = schema?.properties;
+  if (!input || typeof input !== 'object' || Array.isArray(input) || !properties) return input;
+  const result = { ...input };
+  for (const [key, definition] of Object.entries(properties))
+    if (definition?.type === 'string' && !Object.hasOwn(result, key)) result[key] = '';
+  return result;
+}
+
 // This adapter accepts structured tool calls only. Page text never becomes an
 // executable command, and provider bodies/errors are never copied into reports.
 export function tinkerToolProvider({
@@ -78,7 +94,7 @@ export function tinkerToolProvider({
       throw failure('Tinker did not complete exactly one supported action.');
     let action;
     try {
-      action = validate(calls[0].input);
+      action = validate(backfillStringFields(tool.parameters, calls[0].input));
     } catch {
       throw failure('Tinker returned an invalid action.');
     }

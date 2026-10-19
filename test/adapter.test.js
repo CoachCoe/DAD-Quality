@@ -61,3 +61,13 @@ test('donor verifier rejects extra sessions, unconsumed links and changes to ano
   state = good;
   await assert.rejects(adapter.verifyDonor({ signedOut: true }), error => error.status === 'failed');
 });
+
+test('discovery fixture authenticates donors with the dad_donor_session cookie name', async () => {
+  const adapter = new DadAdapter({ data: { id: 'fixture' }, dir: '/tmp/fixture' }, { repo: '/synthetic' });
+  adapter.sql = async () => ({ stdout: '' });
+  const actors = await adapter.discoveryFixture();
+  const authenticated = actors.filter(a => a.cookie);
+  assert.equal(authenticated.length, 2);
+  for (const actor of authenticated) assert.equal(actor.cookieName, 'dad_donor_session');
+  assert.equal(actors.find(a => a.id === 'guest').cookieName, undefined);
+});

@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { modelConfig } from './model-provider.js';
 import { Run, RunError, digest, atomicJSON, redact } from './core.js';
-import { DadAdapter } from './dad.js';
 import { discover, discoveryProvider, discoveryLimits, discoveryInstructions } from './discovery.js';
 import { openDiscoveryBrowser } from './discovery-browser.js';
 import { discoveryMemory } from './discovery-report.js';
@@ -9,8 +8,10 @@ import { buildApplicationMemory } from './application-memory.js';
 import { sourceReader } from './source-reader.js';
 import { listRuns } from './history.js';
 import { hashPolicy, evidenceRequirements } from './policy.js';
+import { resolveTarget } from './targets/index.js';
 
-export function discoveryPolicy() {
+export function discoveryPolicy(target = 'dad') {
+  const { policyId, adapterId } = resolveTarget(target);
   const times = {
     snapshot: 60_000,
     docker: 30_000,
@@ -22,9 +23,9 @@ export function discoveryPolicy() {
   };
   const definition = {
     schemaVersion: 1,
-    id: 'impactgraph-discovery',
+    id: policyId,
     version: '1.3.0',
-    adapter: 'impactgraph',
+    adapter: adapterId,
     scope: 'exploration',
     checks: Object.entries(times).map(([id, timeoutMs]) => ({
       id,
@@ -50,20 +51,23 @@ export async function executeDiscovery({
   provider,
   providerName,
   maxRequests = discoveryLimits.requests,
-  adapterFactory = (run, options) => new DadAdapter(run, options),
+  target = 'dad',
+  adapterFactory,
   browserFactory = openDiscoveryBrowser,
 }) {
   if (!Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > discoveryLimits.requests)
     throw new RunError('Discovery request limit must be 1–40.');
+  const resolved = resolveTarget(target);
+  adapterFactory ??= resolved.adapterFactory;
   // Fail before building images when model configuration is absent.
   const decide = provider ?? discoveryProvider({ providerName, model });
   const config = provider ? { providerName: 'injected-provider', model } : modelConfig({ providerName, model });
   model = config.model;
-  const policy = discoveryPolicy();
+  const policy = discoveryPolicy(target);
   const run = await Run.create(
     output,
     {
-      adapter: 'impactgraph',
+      adapter: resolved.adapterId,
       revision,
       mode: 'exploration',
       model,

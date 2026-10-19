@@ -1,0 +1,46 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "findings": [
+    {
+      "id": 1,
+      "severity": "MEDIUM",
+      "title": "`suite` is in the composeRun rewrite set but omitted from the §8.6(b) argv guard",
+      "where": "§3 composeRun bullet vs §8.6(b) and §4 invariant table",
+      "problem": "§3 commits to rewriting suite(result, name)'s inlined logged(...,['compose','-p',this.id,'-f',this.file,'run','--rm','-T',name],...) (dad.js:358-361) into composeRun — a byte-identical-sensitive acceptance-pipeline argv rewrite — but §8.6(b)'s compose-argv guard enumerates only database-start, migrations, test-migrations, deploy, and cleanup's down. suite has no byte-identical proof, and its api-tests/web-tests services run only in the infra-gated acceptance path that §8 does not run, so a silent argv regression there would pass the unit suite undetected.",
+      "fix": "Add suite to the §8.6(b) argv guard: drive DadAdapter.suite(result,'api-tests') and suite(result,'web-tests') against the stubbed command and assert each recorded argv equals the pinned pre-refactor literal ['compose','-p',<id>,'-f',<file>,'run','--rm','-T','api-tests'] and [...,'web-tests']. Capture both from dev; update the §4 row and §8.6(b) enumeration to include suite."
+    },
+    {
+      "id": 2,
+      "severity": "NIT",
+      "title": "deploy's health-exec compose call asserted 'pure relocation' but unlisted/unmentioned",
+      "where": "§3 ('all compose(...) call sites are a pure relocation') and §8.6(b)",
+      "problem": "deploy() has a second compose call, the readiness probe this.compose(['exec','-T','web','node','-e',...]) at dad.js:380-388, which stays a compose(...) call. The only compose-path argv the guard exercises is sql/exec, so compose's prepend is proven transitively there, but §3's blanket statement leaves the deploy health-exec unmentioned.",
+      "fix": "Add one sentence to §3/§8.6(b): deploy's readiness health-exec and the discoveryReplayFixture stop/start/pg_dump calls remain this.compose(...) (pure relocation, no argv rewrite); compose's prepend correctness is proven transitively by the sql/exec argv guard. No new guard required."
+    },
+    {
+      "id": 3,
+      "severity": "NIT",
+      "title": "freePort call-site transformation unguarded and not flagged as a source edit",
+      "where": "§3 'Generic machinery to extract' — freePort",
+      "problem": "freePort is a module-scope function called bare as freePort() in docker() (dad.js:201). Moving it to base.js and exporting it changes the DAD call site, a source edit to a byte-identical-sensitive file, listed without the care given to the composeRun/execSql rewrites. Low risk (output is a random port, not snapshot-testable) but ambiguous.",
+      "fix": "State the chosen form (import { freePort } from '../base.js' with bare freePort(), or a this.freePort() base method) and note it is a mechanical symbol-resolution change with no behavioral effect."
+    },
+    {
+      "id": 4,
+      "severity": "NIT",
+      "title": "*-checks line range cited as 264-272 but the logged block is 266-272",
+      "where": "§3 mode-conditional note and §9.1 #5 / §9.2 #2",
+      "problem": "The build-${service}-checks logged() call body occupies dad.js:266-272 (guard at :265); the cited 264-272 starts two lines early. All other cited line numbers verified exact.",
+      "fix": "Change 264-272 to 266-272 (or 265-272) in §3 and the §9 responses, or drop the range and rely on the build-${service}-checks label string as the design already states is authoritative."
+    },
+    {
+      "id": 5,
+      "severity": "NIT",
+      "title": "§1 does not note discovery-phase evidence is runner-produced",
+      "where": "§1 'Required methods' evidence sentence",
+      "problem": "policy.js:9-23 includes discovery:['discovery.json','discovery-trace.zip'] and the policy checks array has a discovery check, but §1's per-phase evidence list omits it (correctly, since the runner/browser write it, not the adapter). An implementer reading 'must emit the evidence filenames the policy mandates' could wrongly infer the adapter must emit discovery.json/discovery-trace.zip.",
+      "fix": "Add a clause to §1: the discovery and acceptance-only journey checks' evidence is produced by the runner/engine, not the adapter; the adapter is responsible only for the five provisioning phases' evidence plus cleanup.log."
+    }
+  ],
+  "reviewDoc": "/Users/shawncoe/Documents/dev/DAD/atm/.worktrees/move3-adapter-split/.agents/tasks/design-review.md"
+}
