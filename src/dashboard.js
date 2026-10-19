@@ -11,7 +11,7 @@ import { executeDiscovery } from './discovery-runner.js';
 import { discoveryDetail } from './discovery-report.js';
 import { listRuns, readRun, summarize, compareRuns, collectFindings } from './history.js';
 import { performanceDetail } from './performance.js';
-import { assessRelease } from './release.js';
+import { assessRelease, releaseInputs } from './release.js';
 import { loadPolicy } from './policy.js';
 
 const assets = fileURLToPath(new URL('../web/', import.meta.url));
@@ -131,7 +131,8 @@ export class Dashboard {
   }
   async detail(id) {
     const run = await readRun(this.root, id);
-    const { runs } = await this.history();
+    const history = await this.history();
+    const { runs } = history;
     const baseline = runs.find(
       r =>
         r.id !== run.id &&
@@ -141,7 +142,8 @@ export class Dashboard {
         r.options?.adapter === run.options?.adapter,
     );
     const issues = await verifyEvidence(path.join(this.root, run.id), run);
-    const release = await assessRelease(this.root, run);
+    const inputs = await releaseInputs(this.root, history);
+    const release = await assessRelease(this.root, run, { inputs, evidenceIssues: issues });
     return {
       run,
       release,
@@ -153,8 +155,9 @@ export class Dashboard {
     };
   }
   async snapshot() {
-    const { runs, warnings } = await this.history();
-    const findings = await collectFindings(this.root, runs, this.state.triage);
+    const history = await this.history();
+    const { runs, warnings } = history;
+    const inputs = await releaseInputs(this.root, history);
     return {
       project: {
         name: path.basename(this.repo),
@@ -166,9 +169,9 @@ export class Dashboard {
         model: this.model ?? null,
       },
       runs: runs.map(run => summarize(run, this.active?.id)),
-      findings,
+      findings: inputs.findings,
       warnings,
-      latestRelease: runs[0] ? await assessRelease(this.root, runs[0]) : null,
+      latestRelease: runs[0] ? await assessRelease(this.root, runs[0], { inputs }) : null,
       active: this.active
         ? { id: this.active.id, revision: this.active.revision, cancelRequested: this.active.controller.signal.aborted }
         : null,
