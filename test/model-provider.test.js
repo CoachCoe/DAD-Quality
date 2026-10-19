@@ -235,3 +235,31 @@ test('rejected and truncated Tinker actions retain valid usage on the error', as
     await assert.rejects(provider(reply)(input), e => e.tokens === 26 && e.status === 'inconclusive');
   }
 });
+
+test('Tinker backfills missing schema string fields so strict validation passes', async () => {
+  const reply = body();
+  // A well-formed action whose meaningful fields are present but several
+  // schema-declared string fields were omitted by the model.
+  reply.content[1].input = { action: 'finish', reason: 'No app connected.', value: '', target: '' };
+  const result = await provider(reply)(input);
+  // After backfilling, every declared key is present with '' where not supplied.
+  assert.deepEqual(result.action, {
+    action: 'finish',
+    target: '',
+    value: '',
+    title: '',
+    reason: 'No app connected.',
+    expectation: '',
+    text: '',
+  });
+  assert.equal(result.tokens, 26);
+});
+
+test('Tinker backfill does not mask a missing discriminator', async () => {
+  const reply = body();
+  reply.content[1].input = { reason: 'because' };
+  await assert.rejects(
+    provider(reply)(input),
+    e => /Tinker returned an invalid action\./.test(e.message) && e.status === 'inconclusive' && e.tokens === 26,
+  );
+});
