@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DadAdapter } from '../src/dad.js';
+import { DadAdapter } from '../src/targets/dad/index.js';
 
 // Byte-identical argv guards for Move 3's adapter split. Each rewritten compose/
 // exec call site must emit exactly the pre-refactor argv array. The literals

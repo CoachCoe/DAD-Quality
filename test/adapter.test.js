@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { composeDefinition, DadAdapter } from '../src/dad.js';
+import { DadAdapter } from '../src/targets/dad/index.js';
+import { composeDefinition } from '../src/targets/dad/compose.js';
 
 test('runtime isolates database and disables external integrations', () => {
   const config = composeDefinition({

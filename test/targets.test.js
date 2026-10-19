@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveTarget, isRegisteredAdapter } from '../src/targets.js';
+import { resolveTarget, isRegisteredAdapter } from '../src/targets/index.js';
 import { discoveryPolicy } from '../src/discovery-runner.js';
 
 test('the registry resolves dad to its retained impactgraph identity and rejects unknown targets', () => {

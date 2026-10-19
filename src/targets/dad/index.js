@@ -18,9 +18,6 @@ import {
   verifyStaffSql,
 } from './sql.js';
 
-// Re-export composeDefinition for the src/dad.js compatibility shim.
-export { composeDefinition } from './compose.js';
-
 export class DadAdapter extends ProvisioningAdapter {
   constructor(run, { repo, revision = 'HEAD', sourceIdentity, signal }) {
     super(run);

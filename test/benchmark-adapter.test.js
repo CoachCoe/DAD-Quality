@@ -4,8 +4,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Run } from '../src/core.js';
-import { BenchmarkAdapter } from '../src/benchmark-adapter.js';
-import { resolveTarget } from '../src/targets.js';
+import { BenchmarkAdapter } from '../src/targets/benchmark.js';
+import { resolveTarget } from '../src/targets/index.js';
 import { discoveryPolicy } from '../src/discovery-runner.js';
 
 // No model/API key and no Docker: the benchmark adapter provisions an in-process

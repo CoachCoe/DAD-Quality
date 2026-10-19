@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveTarget } from '../src/targets.js';
-import { BenchmarkAdapter } from '../src/benchmark-adapter.js';
+import { resolveTarget } from '../src/targets/index.js';
+import { BenchmarkAdapter } from '../src/targets/benchmark.js';
 
 // Two-adapter conformance proof for the formal discovery target-adapter
 // interface (design §1/§6): dad (Docker/Postgres) and benchmark (in-process, no
