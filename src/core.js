@@ -21,6 +21,11 @@ export function redact(value) {
     .replace(/((?:authorization|cookie|set-cookie)\s*[:=]\s*)[^\r\n]+/gi, '$1[REDACTED]');
 }
 
+// Redacting values rather than serialized text keeps hostile page content such as
+// "Cookie: ..." from breaking the JSON structure.
+export const redactJSON = value =>
+  JSON.parse(JSON.stringify(value, (_key, item) => (typeof item === 'string' ? redact(item) : item)));
+
 export function evaluate(required, results) {
   if (!required.length || new Set(required).size !== required.length) {
     return { status: 'inconclusive', eligible: false, reasons: ['Required checks must be nonempty and unique.'] };
@@ -132,11 +137,7 @@ export class Run {
     let safe = redact(content);
     if (relative.endsWith('.json')) {
       try {
-        safe = JSON.stringify(
-          JSON.parse(content),
-          (_key, value) => (typeof value === 'string' ? redact(value) : value),
-          2,
-        );
+        safe = JSON.stringify(redactJSON(JSON.parse(content)), null, 2);
       } catch {
         /* Retain malformed diagnostic payloads as redacted text. */
       }

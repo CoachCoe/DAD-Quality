@@ -9,7 +9,7 @@ import {
   benchmarkSource,
   benchmarkMetrics,
 } from '../src/discovery-benchmark.js';
-import { Run, atomicJSON, digest, redact } from '../src/core.js';
+import { Run, atomicJSON, digest, redact, redactJSON } from '../src/core.js';
 import { buildApplicationMemory } from '../src/application-memory.js';
 import { sourceReader } from '../src/source-reader.js';
 import { discoveryProvider, discover, discoveryLimits, discoveryInstructions } from '../src/discovery.js';
@@ -99,10 +99,7 @@ if (values.help) {
         const start = Date.now();
         await run.step('discovery', async result => {
           const update = async () => {
-            await atomicJSON(
-              path.join(run.dir, 'evidence/discovery.json'),
-              JSON.parse(JSON.stringify(report, (_key, value) => (typeof value === 'string' ? redact(value) : value))),
-            );
+            await atomicJSON(path.join(run.dir, 'evidence/discovery.json'), redactJSON(report));
             result.evidence = result.evidence.filter(e => e.path !== 'evidence/discovery.json');
             result.evidence.push(await run.reference('evidence/discovery.json'));
             await run.save();
@@ -118,7 +115,7 @@ if (values.help) {
               signal: controller.signal,
             });
             report.applicationMemory = knowledge.overview;
-            await atomicJSON(path.join(run.dir, 'evidence/application-memory.json'), knowledge.index);
+            await atomicJSON(path.join(run.dir, 'evidence/application-memory.json'), redactJSON(knowledge.index));
             result.evidence.push(await run.reference('evidence/application-memory.json'));
             const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(discoveryLimits.durationMs)]);
             browser = await openDiscoveryBrowser({ ...app, signal, run, result });
