@@ -22,6 +22,8 @@
     "src/scenarios.js",
     "src/source-reader.js",
     "src/targets/dad/compose.js",
-    "src/targets/dad/config.js"
+    "src/targets/dad/config.js",
+    "src/process.js",
+    "src/targets/**/*.js"
   ]
 }

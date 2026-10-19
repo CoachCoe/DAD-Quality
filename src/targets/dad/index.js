@@ -19,16 +19,15 @@ import {
 } from './sql.js';
 
 export class DadAdapter extends ProvisioningAdapter {
-  constructor(run, { repo, revision = 'HEAD', sourceIdentity, signal }) {
-    super(run);
-    this.repo = path.resolve(repo);
-    this.revision = revision;
-    this.signal = signal;
+  /**
+   * @param {any} run
+   * @param {{repo: string, revision?: string, sourceIdentity?: string, signal?: AbortSignal}} options
+   */
+  constructor(run, { sourceIdentity, ...options }) {
+    super(run, options);
     if (sourceIdentity && !/^github:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(sourceIdentity))
       throw new Error('Invalid GitHub source identity.');
     this.sourceIdentity = sourceIdentity;
-    this.source = path.join(run.dir, 'source');
-    this.file = path.join(run.dir, 'compose.json');
   }
   snapshot(result) {
     return super.snapshot(result, {
