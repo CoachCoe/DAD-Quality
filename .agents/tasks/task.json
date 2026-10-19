@@ -1,7 +1,0 @@
-{
-  "task_id": "task-move3-adapter-split",
-  "task_description": "Move 3 adapter split: extract a generic ProvisioningAdapter base (git/compose/docker/sql provisioning machinery) + formal discovery target-adapter interface from the DAD-coupled DadAdapter, relocate DAD-specific code into src/targets/dad/, relocate the benchmark adapter and registry under src/targets/, and keep thin re-export shims so existing deep imports and src/runner.js stay unchanged. DAD must stay byte-identical: pinned policy digest/JSON, cookie dad_donor_session, empty runner.js diff, and argv-snapshot guards for every composeRun/execSql-rewritten call site (including suite). Folds in the five outstanding design-review items as mandatory requirements.",
-  "status": "pending",
-  "feature_order": ["FEAT-001", "FEAT-002"],
-  "blocked_reason": null
-}
