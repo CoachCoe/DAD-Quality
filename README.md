@@ -37,7 +37,7 @@ Dashboard state is stored in `.atm/runs/.dashboard/state.json`. Only one dashboa
 
 - Node.js 22 or newer, npm, Git, and tar.
 - Docker Engine/Desktop with Compose v2, running Linux containers.
-- A local DAD checkout. The initial adapter targets revision `1d3bd1774a6f65398d8aed2bb6f58d9375794118`; pass `--revision` to pin it explicitly.
+- A local DAD-Main checkout. Runs use its `HEAD` unless `--revision` names another commit, branch or tag.
 - Network access to install dependencies and build images. Runtime application containers have no external network access.
 
 The DAD rebrand retains the versioned `impactgraph` adapter/policy identifiers and
@@ -148,17 +148,21 @@ Do not run global Docker prune commands to clean an ATM run. Retention is manual
 
 ## Development
 
+CI runs these in order on every push and pull request:
+
 ```sh
-npm run check
-npm run typecheck # gradual checkJs coverage for core contracts and security boundaries
-npm run lint      # lint and formatting; npm run format rewrites formatting
+npm audit --audit-level=high
+npm run check        # syntax of every script
+npm run typecheck    # gradual checkJs coverage for core contracts and security boundaries
+npm run lint         # lint and formatting; npm run format rewrites formatting
 npm test
-npm run test:browser
+npm run test:browser # real Chromium; run npm exec playwright install chromium first
+npm run test:fixture # Docker: PostgreSQL dump, restore and grant replay
 ```
 
 To verify the complete dashboard-to-DAD path, start the dashboard and run `npm run test:live`. This launches a real validation from the browser and waits for its evidence. Screenshots and the acceptance result are saved under `.atm/ui/`. The live test is explicit and is not part of routine CI.
 
-Unit and integration tests exercise source-reader boundaries, structured experiment evidence, typed state assertions, clean-fixture mutation replay and restoration, versioned policy validation, missing or modified evidence, finding-based acceptance, agreement between CLI and dashboard assessments, donor state invariants, fail-closed decisions, evidence persistence, secret filtering, command failures/timeouts/cancellation, isolation configuration, model-action validation, independent verification, finding deduplication, persistent triage, request protection, and commit-watch behavior. Browser tests cover the dashboard's full interaction flow, responsive layout and automated accessibility checks on the overview, evidence dialog, finding dialog and mobile findings view, including a passing-checks/blocked-acceptance case after evidence modification, plus real request blocking and the exploration loop, without API charges.
+Unit and integration tests exercise source-reader boundaries, structured experiment evidence, typed state assertions, clean-fixture mutation replay and restoration, versioned policy validation, missing or modified evidence, finding-based acceptance, agreement between CLI and dashboard assessments, donor state invariants, fail-closed decisions, evidence persistence, secret filtering, command failures/timeouts/cancellation, isolation configuration, model-action validation, independent verification, finding deduplication, persistent triage, request protection, and commit-watch behavior. Browser tests cover the dashboard's full interaction flow, keyboard focus during polling, responsive layout and automated accessibility checks on the overview, evidence dialog, finding dialog and mobile findings view, including a passing-checks/blocked-acceptance case after evidence modification, plus real request blocking and the exploration loop, without API charges.
 
 API implementation references: [OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling), [Playwright BrowserContext](https://playwright.dev/docs/api/class-browsercontext), and [Docker Compose internal networks](https://docs.docker.com/reference/compose-file/networks/).
 
