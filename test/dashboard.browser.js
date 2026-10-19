@@ -101,6 +101,17 @@ test('dashboard supports run inspection, triage, launch, cancellation and mobile
     true,
     'Polling must preserve the focused run control',
   );
+  await page.getByRole('button', { name: 'Close run details' }).click();
+  // The active run's duration changes on every poll, so each poll re-renders the page.
+  await page.locator(`#content button.row-arrow[data-run="${passed.data.id}"]`).focus();
+  for (let poll = 0; poll < 2; poll++) await page.waitForResponse(response => response.url().endsWith('/api/state'));
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  assert.equal(
+    await page.evaluate(id => document.activeElement?.matches(`button.row-arrow[data-run="${id}"]`), passed.data.id),
+    true,
+    'Polling must preserve focus within the page content',
+  );
+  await page.locator('#content button.run-link').first().click();
   await page.getByRole('button', { name: 'Cancel validation' }).click();
   await page.getByRole('button', { name: 'Run this revision again' }).waitFor();
   assert.match(await page.locator('#run-detail').innerText(), /Canceled/);
