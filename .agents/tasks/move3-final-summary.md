@@ -16,7 +16,7 @@ commit, matching the convention used by move2 / move3-verification).
 - `c697c78` refactor: split DadAdapter into targets/dad + relocate benchmark/registry behind shims
 - `7e491ee` chore: mark FEAT-002 completed with verification findings
 - `dc44e32` docs: record move3 cross-feature integration verification
-- `<finalization>` chore: record move3 convergence task artifacts + final summary
+- `f09d1c3` chore: record move3 convergence task artifacts and final summary (finalization)
 
 (`dev` tip is `7a4a255`; branch base is `781b426` origin/dev.)
 
