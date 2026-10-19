@@ -103,6 +103,11 @@ export async function releaseInputs(root, history) {
   return { runs, findings: await collectFindings(root, runs, triage), inputIssues };
 }
 
+/**
+ * @param {string} root
+ * @param {any} run
+ * @param {{directory?: string, inputs?: {findings: object[], inputIssues: string[]}, evidenceIssues?: string[]}} [options]
+ */
 export async function assessRelease(root, run, { directory = path.join(root, run.id), inputs, evidenceIssues } = {}) {
   const { findings, inputIssues } = inputs ?? (await releaseInputs(root));
   return evaluateRelease(run, {

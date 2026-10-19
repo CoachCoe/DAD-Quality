@@ -153,7 +153,7 @@ CI runs these in order on every push and pull request:
 ```sh
 npm audit --audit-level=high
 npm run check        # syntax of every script
-npm run typecheck    # gradual checkJs coverage for core contracts and security boundaries
+npm run typecheck    # checkJs over src, scripts and the dashboard frontend
 npm run lint         # lint and formatting; npm run format rewrites formatting
 npm test
 npm run test:browser # real Chromium; run npm exec playwright install chromium first

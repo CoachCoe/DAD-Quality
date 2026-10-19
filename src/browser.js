@@ -19,6 +19,10 @@ export function allowedRequest(raw, method, origins, readOnly = false) {
   }
 }
 
+/**
+ * @param {string[]} origins
+ * @param {{readOnly?: boolean, signal?: AbortSignal}} [options]
+ */
 export async function openBrowser(origins, { readOnly = false, signal } = {}) {
   let browser;
   try {

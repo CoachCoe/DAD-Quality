@@ -82,7 +82,7 @@ export async function benchmarkApplication(fault = 'healthy') {
   });
   await new Promise((resolve, reject) => {
     server.once('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
+    server.listen(0, '127.0.0.1', () => resolve(undefined));
   });
   const fixture = await replayFixture({
     snapshot: async () => structuredClone({ actual, expected }),
@@ -97,7 +97,7 @@ export async function benchmarkApplication(fault = 'healthy') {
     },
   });
   return {
-    origin: `http://127.0.0.1:${server.address().port}`,
+    origin: `http://127.0.0.1:${/** @type {import('node:net').AddressInfo} */ (server.address()).port}`,
     actors: [
       { id: 'guest', description: 'Anonymous visitor', entry: '/' },
       { id: 'donor-a', description: 'Synthetic donor Alex', cookie: 'test-a', entry: '/profile' },

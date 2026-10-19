@@ -40,6 +40,11 @@ export function discoveryPolicy(target = 'dad') {
   return { ...snapshot, digest: hashPolicy(snapshot) };
 }
 
+/**
+ * @param {{repo?: string, revision?: string, output?: string, model?: string, signal?: AbortSignal, trigger?: string,
+ *   onCreated?: (run: Run) => void, provider?: Function, providerName?: string, maxRequests?: number, target?: string,
+ *   adapterFactory?: (run: Run, options: object) => any, browserFactory?: Function}} options
+ */
 export async function executeDiscovery({
   repo,
   revision = 'HEAD',

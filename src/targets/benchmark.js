@@ -6,6 +6,10 @@ import { benchmarkApplication, benchmarkContract, benchmarkSource } from '../dis
 // Serves the healthy benchmark application in-process. The container phases only
 // record that they do not apply, so their policy-required evidence still exists.
 export class BenchmarkAdapter {
+  /**
+   * @param {any} run
+   * @param {{signal?: AbortSignal}} [options]
+   */
   constructor(run, { signal } = {}) {
     this.run = run;
     this.signal = signal;

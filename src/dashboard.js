@@ -79,7 +79,10 @@ export class Dashboard {
     this.resolve = resolve;
     this.policyFile = policy;
     this.active = null;
-    this.state = { watch: { enabled: false, revision: 'HEAD', lastRevision: null }, triage: {} };
+    this.state = {
+      watch: { enabled: false, revision: 'HEAD', lastRevision: null, updatedAt: null, error: null },
+      triage: {},
+    };
     this.control = path.join(this.root, '.dashboard');
     this.mutations = Promise.resolve();
     this.starting = false;
@@ -425,13 +428,13 @@ export async function createDashboardServer(options) {
   try {
     await new Promise((resolve, reject) => {
       server.once('error', reject);
-      server.listen(options.port ?? 4310, '127.0.0.1', resolve);
+      server.listen(options.port ?? 4310, '127.0.0.1', () => resolve(undefined));
     });
   } catch (error) {
     await dashboard.close();
     throw error;
   }
-  origin = `http://127.0.0.1:${server.address().port}`;
+  origin = `http://127.0.0.1:${/** @type {import('node:net').AddressInfo} */ (server.address()).port}`;
   const timer = setInterval(() => {
     void dashboard.tick().catch(error => {
       dashboard.lastLaunchError = redact(error.message);

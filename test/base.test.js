@@ -6,7 +6,7 @@ function fakeRun(id = 'atm-base-test') {
   const writes = [];
   return {
     writes,
-    dir: '/tmp/atm-base-test',
+    dir: `/tmp/${id}`,
     data: { id },
     async evidence(relative, content) {
       writes.push({ relative, content });
@@ -17,7 +17,7 @@ function fakeRun(id = 'atm-base-test') {
 
 test('logged writes the label.log evidence on success and appends the reference', async () => {
   const run = fakeRun();
-  const adapter = new ProvisioningAdapter(run);
+  const adapter = new ProvisioningAdapter(run, { repo: '/synthetic' });
   const result = { evidence: [] };
   const output = await adapter.logged(result, 'phase', process.execPath, ['-e', 'process.stdout.write("ok")']);
   assert.equal(output.stdout, 'ok');
@@ -30,7 +30,7 @@ test('logged writes the label.log evidence on success and appends the reference'
 
 test('logged still writes the label.log evidence on failure and rethrows', async () => {
   const run = fakeRun();
-  const adapter = new ProvisioningAdapter(run);
+  const adapter = new ProvisioningAdapter(run, { repo: '/synthetic' });
   const result = { evidence: [] };
   await assert.rejects(
     adapter.logged(result, 'broken', process.execPath, ['-e', 'process.stderr.write("boom");process.exit(1)']),
@@ -44,8 +44,7 @@ test('logged still writes the label.log evidence on failure and rethrows', async
 
 test('compose commands are always scoped to the run-owned project and file', async () => {
   const run = fakeRun('atm-run-123');
-  const adapter = new ProvisioningAdapter(run);
-  adapter.file = '/tmp/atm-run-123/compose.json';
+  const adapter = new ProvisioningAdapter(run, { repo: '/synthetic' });
   let captured;
   adapter.logged = async (result, label, binary, args, options) => {
     captured = { result, label, binary, args, options };

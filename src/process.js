@@ -18,6 +18,12 @@ export function cleanEnvironment(extra = {}) {
   return { ...env, ...extra };
 }
 
+/**
+ * @param {string} binary
+ * @param {string[]} args
+ * @param {{cwd?: string, env?: Record<string, string>, timeout?: number, signal?: AbortSignal, input?: string,
+ *   failureStatus?: string, maxBytes?: number}} [options]
+ */
 export async function command(
   binary,
   args,

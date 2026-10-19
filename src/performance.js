@@ -85,7 +85,7 @@ function request(origin, target, cookie, agent, timeoutMs, signal) {
         res.on('end', () => {
           let valid = false;
           try {
-            const body = JSON.parse(Buffer.concat(chunks));
+            const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
             valid =
               body !== null &&
               typeof body === 'object' &&

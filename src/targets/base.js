@@ -41,10 +41,18 @@ import { digest, RunError } from '../core.js';
  */
 
 export class ProvisioningAdapter {
-  constructor(run) {
+  /**
+   * @param {any} run
+   * @param {{repo: string, revision?: string, signal?: AbortSignal}} options
+   */
+  constructor(run, { repo, revision = 'HEAD', signal }) {
     this.run = run;
     this.id = run.data.id;
-    this.signal = undefined;
+    this.repo = path.resolve(repo);
+    this.revision = revision;
+    this.signal = signal;
+    this.source = path.join(run.dir, 'source');
+    this.file = path.join(run.dir, 'compose.json');
     this.created = false;
   }
 
@@ -52,10 +60,10 @@ export class ProvisioningAdapter {
     const server = createServer();
     await new Promise((resolve, reject) => {
       server.once('error', reject);
-      server.listen(0, '127.0.0.1', resolve);
+      server.listen(0, '127.0.0.1', () => resolve(undefined));
     });
-    const port = server.address().port;
-    await new Promise(resolve => server.close(resolve));
+    const { port } = /** @type {import('node:net').AddressInfo} */ (server.address());
+    await new Promise(resolve => server.close(() => resolve(undefined)));
     return port;
   }
 

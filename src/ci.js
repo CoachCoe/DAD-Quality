@@ -181,7 +181,7 @@ export function decryptBundle(bytes, privateKey) {
   const decipher = createDecipheriv('aes-256-gcm', key, Buffer.from(envelope.iv, 'base64'));
   decipher.setAuthTag(Buffer.from(envelope.tag, 'base64'));
   const plaintext = Buffer.concat([decipher.update(Buffer.from(envelope.data, 'base64')), decipher.final()]);
-  const bundle = JSON.parse(gunzipSync(plaintext, { maxOutputLength: 512 * 1024 * 1024 }));
+  const bundle = JSON.parse(gunzipSync(plaintext, { maxOutputLength: 512 * 1024 * 1024 }).toString('utf8'));
   if (
     bundle.schemaVersion !== 1 ||
     !bundle.files ||

@@ -18,7 +18,7 @@ export async function readDiscovery(root, run) {
     throw new Error('Discovery evidence changed.');
   const issues = await verifyEvidence(path.join(root, run.id), { results: [check] });
   if (issues.length) throw new Error(`Discovery supporting evidence is invalid: ${issues.join('; ')}`);
-  const report = JSON.parse(bytes);
+  const report = JSON.parse(bytes.toString('utf8'));
   if (
     report.version !== 1 ||
     report.runId !== run.id ||

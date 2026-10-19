@@ -8,6 +8,11 @@ import { loadPolicy } from './policy.js';
 import { assessRelease } from './release.js';
 import { performanceCheck } from './performance.js';
 
+/**
+ * @param {{repo: string, revision?: string, sourceIdentity?: string, output?: string, policy?: string, ai?: boolean,
+ *   requireAI?: boolean, model?: string, providerName?: string, signal?: AbortSignal, trigger?: string,
+ *   onCreated?: (run: Run) => void}} options
+ */
 export async function executeRun({
   repo,
   revision = 'HEAD',
@@ -73,12 +78,8 @@ export async function executeRun({
       await step('api-tests', result => adapter.suite(result, 'api-tests'));
       await step('web-tests', result => adapter.suite(result, 'web-tests'));
       if (!signal.aborted && (await step('deploy', result => adapter.deploy(result)))) {
-        for (const [id, handler] of [
-          ['staff-journey', staffJourney],
-          ['donor-claim-journey', donorClaimJourney],
-        ]) {
-          if (!signal.aborted) await step(id, result => handler(adapter, result));
-        }
+        if (!signal.aborted) await step('staff-journey', result => staffJourney(adapter, result));
+        if (!signal.aborted) await step('donor-claim-journey', result => donorClaimJourney(adapter, result));
         if (!signal.aborted)
           await step('ai-public-journey', result => publicAgent(adapter, result, { model, providerName }));
         if (!signal.aborted)
