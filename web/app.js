@@ -145,8 +145,8 @@ function render() {
   $('#page-title').textContent = titles[view][0];
   $('#page-description').textContent = titles[view][1];
   document.querySelectorAll('[data-nav]').forEach(link => {
-    link.classList.toggle('active', link.dataset.nav === view);
-    if (link.dataset.nav === view) link.setAttribute('aria-current', 'page');
+    link.classList.toggle('active', link.getAttribute('data-nav') === view);
+    if (link.getAttribute('data-nav') === view) link.setAttribute('aria-current', 'page');
     else link.removeAttribute('aria-current');
   });
   $('#new-exploration').disabled = Boolean(state.active || state.starting);
@@ -286,8 +286,8 @@ async function showRun(id, open = true) {
     detailFingerprint = fingerprint;
     const { run, summary, comparison, integrity, release } = data;
     const active = state.active?.id === id;
-    const openChecks = [...document.querySelectorAll('#run-detail details[open]')].map(
-      element => element.dataset.check,
+    const openChecks = [...document.querySelectorAll('#run-detail details[open]')].map(element =>
+      element.getAttribute('data-check'),
     );
     $('#run-detail').innerHTML =
       `<div class="dialog-top"><div><div class="eyebrow">${summary.mode === 'exploration' ? 'EXPLORATION EVIDENCE' : 'VALIDATION EVIDENCE'}</div><h2 id="run-title">${escapeHTML(date(run.startedAt))}</h2></div><button class="icon-button close-dialog" aria-label="Close run details">×</button></div><div class="detail-meta">${badge(summary.status, summary.mode)}<code class="commit">${escapeHTML(summary.revision.slice(0, 12))}</code><small>${escapeHTML(duration(summary.durationMs))} · ${escapeHTML(runLabel(summary))}</small></div>${discoveryView(data.discovery, id)}${performanceView(data.performance)}<div class="detail-grid"><section aria-label="Checks">${run.results.map(r => `<details class="check-row" data-check="${escapeHTML(r.id)}" ${openChecks.includes(r.id) || r.status !== 'passed' ? 'open' : ''}><summary><span>${escapeHTML(r.id)}${r.required ? '' : ' · advisory'}</span>${badge(!r.finishedAt && active ? 'running' : r.status)}</summary><p>${escapeHTML(!r.finishedAt && active ? 'Check in progress. Evidence appears when the check completes.' : r.summary)}</p><div class="evidence-links">${evidenceLinks(id, r.evidence)}</div></details>`).join('') || '<p>Preparing the candidate…</p>'}</section><aside class="detail-aside"><h3>Local acceptance</h3><p><strong>${release?.scope === 'exploration' ? 'Not applicable — exploration' : release?.eligible ? 'Eligible' : 'Blocked'}</strong> · current assessment</p>${(release?.reasons ?? ['Assessment unavailable.']).map(reason => `<p>${escapeHTML(reason)}</p>`).join('')}<h3>Recorded policy</h3><p>${escapeHTML(run.policy?.definition ? `${run.policy.definition.id} · ${run.policy.definition.version}` : 'Legacy run: no versioned policy')}</p><code class="policy-digest">${escapeHTML(run.policy?.digest ?? '')}</code>${run.policy?.scenarios?.map(s => `<details><summary>${escapeHTML(s.id)} · v${s.version}</summary><p>${escapeHTML(s.goal)}</p><strong>Success criteria</strong><ul>${s.successCriteria.map(c => `<li>${escapeHTML(c)}</li>`).join('')}</ul></details>`).join('') ?? ''}${run.release ? `<p>At completion: ${escapeHTML(run.release.status)}. Current evidence and finding assessments may change eligibility.</p>` : ''}<hr><h3>Evidence integrity</h3><div class="integrity ${integrity.status}">${integrity.status === 'verified' ? '✓ Recorded evidence hashes match' : 'Evidence needs attention'}</div>${integrity.issues.map(issue => `<p>${escapeHTML(issue)}</p>`).join('')}<hr><h3>Compared with previous run</h3>${comparison ? `<p>${escapeHTML(comparison.revision?.slice(0, 8) ?? 'Unresolved revision')}</p>${comparison.changes.length ? comparison.changes.map(c => `<div class="change"><strong>${escapeHTML(c.check)}</strong>${escapeHTML(c.before)} <span class="arrow">→</span> ${escapeHTML(c.after)}</div>`).join('') : '<p>No check status changes.</p>'}${comparison.removed.length ? `<p>Not present: ${escapeHTML(comparison.removed.join(', '))}</p>` : ''}<button class="text-button" data-run="${escapeHTML(comparison.baselineId)}">View previous run →</button>` : '<p>This is the first comparable run.</p>'}<hr><h3>Acceptance scope</h3><p>Eligibility applies to the recorded local policy. Production promotion is not authorized. Finding triage cannot override a failed required check.</p></aside></div><div class="dialog-actions">${active ? `<button class="button secondary" data-cancel="${escapeHTML(id)}" ${state.active.cancelRequested ? 'disabled' : ''}>${state.active.cancelRequested ? 'Canceling & cleaning up…' : 'Cancel validation'}</button>` : `<button class="button secondary" data-rerun="${escapeHTML(summary.revision)}" data-mode="${escapeHTML(summary.mode)}" ${state.active ? 'disabled' : ''}>Run this revision again</button>`}<button class="button primary close-dialog">Done</button></div>`;
@@ -322,7 +322,7 @@ function showFinding(id) {
   if (!$('#finding-dialog').open) $('#finding-dialog').showModal();
 }
 document.addEventListener('click', async event => {
-  const button = event.target.closest('button');
+  const button = /** @type {Element} */ (event.target).closest('button');
   if (!button) return;
   if (button.classList.contains('close-dialog')) {
     button.closest('dialog').close();
@@ -385,17 +385,19 @@ document.addEventListener('click', async event => {
   }
 });
 document.addEventListener('input', event => {
-  if (event.target.id === 'search') {
-    search = event.target.value;
+  const target = /** @type {HTMLInputElement} */ (event.target);
+  if (target.id === 'search') {
+    search = target.value;
     render();
   }
 });
 document.addEventListener('change', event => {
-  if (event.target.id === 'filter') {
-    filter = event.target.value;
+  const target = /** @type {HTMLSelectElement | HTMLInputElement} */ (event.target);
+  if (target.id === 'filter') {
+    filter = target.value;
     render();
   }
-  if (event.target.id === 'ai') {
+  if (target.id === 'ai') {
     $('#require-ai').disabled = !$('#ai').checked;
     if (!$('#ai').checked) $('#require-ai').checked = false;
   }
@@ -427,7 +429,7 @@ $('#launch-form').addEventListener('submit', async event => {
 });
 $('#watch-form').addEventListener('submit', async event => {
   event.preventDefault();
-  const button = event.submitter;
+  const button = /** @type {HTMLButtonElement} */ (event.submitter);
   button.disabled = true;
   try {
     await api('/api/watch', {
@@ -445,9 +447,10 @@ $('#watch-form').addEventListener('submit', async event => {
   }
 });
 document.addEventListener('submit', async event => {
-  if (event.target.id !== 'triage-form') return;
+  if (/** @type {HTMLFormElement} */ (event.target).id !== 'triage-form') return;
   event.preventDefault();
-  event.submitter.disabled = true;
+  const submit = /** @type {HTMLButtonElement} */ (event.submitter);
+  submit.disabled = true;
   try {
     await api(`/api/findings/${selectedFinding}`, {
       method: 'PATCH',
@@ -463,7 +466,7 @@ document.addEventListener('submit', async event => {
   } catch (error) {
     $('#triage-error').textContent = error.message;
     $('#triage-error').hidden = false;
-    event.submitter.disabled = false;
+    submit.disabled = false;
   }
 });
 function navigate() {

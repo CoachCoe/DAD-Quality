@@ -110,6 +110,11 @@ export function discoveryProvider({ apiKey, model, providerName, fetchImpl = fet
     validate: validateDiscoveryAction,
     fetchImpl,
   });
+  /**
+   * @param {{observation: object, history: any[], investigations: any[], memory: any[], remaining: object,
+   *   signal?: AbortSignal, sourceEvidence?: any[], sourceContext?: object, coverage?: object, activeExperiment?: object,
+   *   baseline?: object, applicationMemory?: object, memoryEvidence?: any[]}} context
+   */
   return async ({
     observation,
     history,
