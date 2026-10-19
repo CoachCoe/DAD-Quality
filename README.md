@@ -23,6 +23,7 @@ Open **http://127.0.0.1:4310** using the exact URL printed by the server. Existi
 - **Overview:** latest candidate, actual run totals, findings awaiting triage, and automation settings.
 - **Validation runs:** filter by status or search commit/run IDs; expand checks to open logs, screenshots and downloadable traces. Inspect changes from the previous completed candidate and verify evidence hashes.
 - **Findings:** repeated failed checks are grouped by application, check and normalized error signature. Set severity, confirm, dismiss or resolve, and retain an assessment history. Download a finding with its pinned reproduction command.
+- **About:** review the local profile's coverage, safety and privacy boundaries, and known operational limits.
 - **Run validation:** select a local commit, branch or tag. ATM resolves it to a SHA before execution, permits one active dashboard run, and supports cancellation with cleanup.
 - **Commit watch:** opt in to validate new local commits every 15 seconds while the dashboard is running. Enabling establishes a baseline; it does not run the existing commit or fetch remote changes. If commits accumulate during a run, the latest observed candidate runs next. Watch settings and the last triggered SHA persist across restarts. Automated runs use deterministic checks; AI remains an explicit manual choice.
 

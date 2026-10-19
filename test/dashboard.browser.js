@@ -110,6 +110,11 @@ test('dashboard supports run inspection, triage, launch, cancellation and mobile
   await page.getByRole('link', { name: /Findings/ }).click();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   await accessible();
+  await page.getByRole('link', { name: 'About', exact: true }).click();
+  await page.getByRole('heading', { name: 'About ATM' }).waitFor();
+  assert.match(await page.locator('#content').innerText(), /never authorizes a production release/i);
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await accessible();
   assert.deepEqual(errors, []);
 });
 

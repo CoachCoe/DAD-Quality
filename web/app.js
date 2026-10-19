@@ -106,6 +106,10 @@ function runsView() {
   );
   return `<div class="toolbar"><input id="search" aria-label="Search runs" placeholder="Search by commit or run ID…" value="${escapeHTML(search)}"><select id="filter" aria-label="Filter runs">${['all', 'passed', 'failed', 'running', 'inconclusive', 'canceled', 'incomplete'].map(value => `<option value="${value}" ${filter === value ? 'selected' : ''}>${value === 'all' ? 'All statuses' : titleCase(value)}</option>`).join('')}</select></div>${runTable(runs)}`;
 }
+
+function aboutView() {
+  return `<div class="about-grid"><article class="panel"><div class="eyebrow">ATM · VERSION 0.3.0</div><h2>Evidence before confidence.</h2><p>ATM is a private, local quality workspace for DAD. It builds committed candidates in isolated containers, exercises critical staff and donor journeys in a real browser, verifies persisted state independently, and retains the evidence behind every result.</p><p>A passing run means the candidate satisfies the recorded local acceptance policy. It never authorizes a production release.</p></article><article class="panel"><h2>What the profile covers</h2><ul><li>Production API and frontend image builds</li><li>Go race-enabled API tests and frontend lint, unit, and type checks</li><li>Staff passkey activation, sign-out, and sign-in</li><li>Donor account claim, session, and replay protection</li><li>Host, authentication, and persisted-state boundaries</li><li>Advisory baseline, burst, and recovery measurements</li></ul></article><article class="panel"><h2>Safety and privacy</h2><ul><li>Runs use synthetic identities and disposable PostgreSQL storage.</li><li>The dashboard binds to loopback and is intended for one trusted local operator.</li><li>Mutations require same-origin requests and a session token.</li><li>Evidence stays local unless the optional encrypted GitHub gate is configured.</li><li>Browser traces can contain synthetic session data and should remain private.</li></ul></article><article class="panel"><h2>Known limits</h2><ul><li>No production deployment, promotion, rollback, or monitoring.</li><li>No live Stripe, email, push, or external integration coverage.</li><li>The default performance profile is advisory and does not establish capacity.</li><li>AI discovery findings remain hypotheses until a person reviews them.</li><li>Trusted source is required: dependency and container build scripts execute candidate code.</li></ul></article></div>`;
+}
 function render() {
   if (!state) return;
   const focus = document.activeElement?.id,
@@ -117,6 +121,7 @@ function render() {
     overview: ['Release overview', `Validation history and evidence for ${state.project.name}.`],
     runs: ['Validation runs', 'Every candidate, every check, and the evidence behind each result.'],
     findings: ['Findings', 'Turn failed checks into clear next steps.'],
+    about: ['About ATM', 'Scope, safety boundaries, and operational limits.'],
   };
   $('#page-title').textContent = titles[view][0];
   $('#page-description').textContent = titles[view][1];
@@ -130,7 +135,14 @@ function render() {
   $('#new-run').textContent = state.active || state.starting ? 'Validation running…' : '＋ Run validation';
   $('#warnings').textContent = [...state.warnings, ...(state.lastLaunchError ? [state.lastLaunchError] : [])].join(' ');
   $('#warnings').hidden = !$('#warnings').textContent;
-  $('#content').innerHTML = view === 'overview' ? overview() : view === 'runs' ? runsView() : findingsView();
+  $('#content').innerHTML =
+    view === 'overview'
+      ? overview()
+      : view === 'runs'
+        ? runsView()
+        : view === 'findings'
+          ? findingsView()
+          : aboutView();
   $('#content').setAttribute('aria-busy', 'false');
   if (focus === 'search' && $('#search')) {
     $('#search').focus();
@@ -436,7 +448,7 @@ document.addEventListener('submit', async event => {
 });
 function navigate() {
   const target = location.hash.slice(1);
-  view = ['overview', 'runs', 'findings'].includes(target) ? target : 'overview';
+  view = ['overview', 'runs', 'findings', 'about'].includes(target) ? target : 'overview';
   search = '';
   filter = 'all';
   render();
