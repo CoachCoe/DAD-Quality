@@ -24,6 +24,20 @@
     "src/targets/dad/compose.js",
     "src/targets/dad/config.js",
     "src/process.js",
-    "src/targets/**/*.js"
+    "src/targets/**/*.js",
+    "src/browser.js",
+    "src/agent.js",
+    "src/discovery.js",
+    "src/discovery-browser.js",
+    "src/discovery-fixture.js",
+    "src/discovery-benchmark.js",
+    "src/runner.js",
+    "src/discovery-runner.js",
+    "src/discovery-report.js",
+    "src/application-memory.js",
+    "src/history.js",
+    "src/release.js",
+    "src/policy.js",
+    "src/performance.js"
   ]
 }

@@ -10,6 +10,7 @@ import {
   evaluateRelationship,
 } from './experiment-contract.js';
 
+/** @type {Readonly<Record<'requests' | 'durationMs' | 'outputTokens' | 'totalTokens' | 'replayActions', number>>} */
 export const discoveryLimits = Object.freeze({
   requests: 40,
   durationMs: 600_000,
@@ -99,6 +100,7 @@ export function validateDiscoveryAction(value) {
   return value;
 }
 
+/** @param {{apiKey?: string, model?: string, providerName?: string, fetchImpl?: typeof fetch}} [options] */
 export function discoveryProvider({ apiKey, model, providerName, fetchImpl = fetch } = {}) {
   const decide = toolProvider({
     ...requireModelConfig({ apiKey, model, providerName }),

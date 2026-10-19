@@ -45,6 +45,14 @@ export function validateAction(value) {
   return value;
 }
 
+/** @typedef {{action: 'click' | 'done', role: 'link' | 'button', name: string}} BrowserAction */
+/** @typedef {(request: {observation: object, history: object[], signal: AbortSignal}) => Promise<any>} PublicProvider */
+
+/**
+ * @param {{provider: PublicProvider, observe: () => Promise<object>, act: (action: BrowserAction) => Promise<void>,
+ *   verify: () => Promise<any>, signal: AbortSignal, maxActions?: number,
+ *   onEvent?: (event: object) => Promise<void>}} options
+ */
 export async function explore({
   provider,
   observe,
@@ -84,6 +92,7 @@ export async function explore({
   throw new RunError('AI scenario exhausted its action budget.');
 }
 
+/** @param {{providerName?: string, apiKey?: string, model?: string, fetchImpl?: typeof fetch}} [options] */
 export function publicProvider({ providerName, apiKey, model, fetchImpl } = {}) {
   const decide = toolProvider({
     ...requireModelConfig({ providerName, apiKey, model }),
@@ -97,6 +106,11 @@ export function publicProvider({ providerName, apiKey, model, fetchImpl } = {}) 
     decide({ input: JSON.stringify({ goal: scenario.goal, observation, history }), signal });
 }
 
+/**
+ * @param {any} adapter
+ * @param {any} result
+ * @param {{model?: string, apiKey?: string, provider?: PublicProvider, providerName?: string}} options
+ */
 export async function publicAgent(adapter, result, { model, apiKey, provider, providerName }) {
   const decide = provider ?? publicProvider({ apiKey, model, providerName });
   const signal = AbortSignal.any([adapter.signal, AbortSignal.timeout(scenario.maxDurationMs)]);
