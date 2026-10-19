@@ -87,10 +87,14 @@ export class ProvisioningAdapter {
   }
 
   async snapshot(result, { requiredFiles, requireMessage, source }) {
-    const { stdout } = await command('git', ['rev-parse', '--verify', `${this.revision}^{commit}`], {
-      cwd: this.repo,
-      signal: this.signal,
-    });
+    const { stdout } = await command(
+      'git',
+      ['rev-parse', '--verify', '--end-of-options', `${this.revision}^{commit}`],
+      {
+        cwd: this.repo,
+        signal: this.signal,
+      },
+    );
     const revision = stdout.trim();
     if (!/^[a-f0-9]{40,64}$/.test(revision)) throw new RunError('Invalid source revision.');
     const tree = await command('git', ['ls-tree', '-r', '--name-only', revision], {
