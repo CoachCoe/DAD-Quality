@@ -1,0 +1,28 @@
+{
+  "project_type": "ESM Node.js CLI/library (atm — local release validation + bounded AI discovery agents for web apps). No TypeScript; duck-typed adapters.",
+  "language": "JavaScript (ESM, Node >= 22)",
+  "build_system": "No compile/bundle step. Plain ESM run directly by node. Biome (@biomejs/biome 2.5.15) for lint/format.",
+  "test_framework": "node:test (built-in). Unit suites: test/*.test.js run via `node --test test/*.test.js`. Infra-gated: test/*.browser.js (Playwright) and test/fixture.postgres.js (real Postgres/Docker) are NOT run in this phase.",
+  "build_command": "npm run lint   (biome check --error-on-warnings .)",
+  "test_command": "npm test   (node --test test/*.test.js)",
+  "verification_instructions": "After each feature: run `npm run lint` (must be clean) then `npm test` (must be fully green; baseline is 109 pass, 0 fail with model keys unset and no Docker). For the byte-identical proof additionally run `git -C /Users/shawncoe/Documents/dev/DAD/atm/.worktrees/move3-adapter-split diff dev -- src/runner.js` and confirm it prints NOTHING. Confirm the policy snapshot via `node -e \"import('./src/discovery-runner.js').then(m=>{const d=m.discoveryPolicy('dad');console.log(d.digest, JSON.stringify(d.definition).length)})\"` prints digest be91648ac06f7508faf9148c339d25e0a704f4b7c61c7918b8e7b23892113954 and length 869. Do NOT run test:fixture or test:browser here (no Docker/Chromium); they must stay resolvable via shims and are run post-merge by the orchestrator.",
+  "snapshot_or_generated_files": null,
+  "environment_constraints": "Work only inside the worktree /Users/shawncoe/Documents/dev/DAD/atm/.worktrees/move3-adapter-split. Use absolute paths; relative paths resolve to the parent workspace. All git commands use `git -C /Users/shawncoe/Documents/dev/DAD/atm/.worktrees/move3-adapter-split ...`. No Docker and no model API keys available: provisioning phases and browser suites cannot run; prove byte-identity with argv-snapshot guards (stubbed command), the unit suite, and the policy digest/JSON snapshot. Commit locally on branch feat/adapter-interface; never push.",
+  "contribution_requirements": "No AGENTS.md/CONTRIBUTING.md and no .kiro/steering present. Conventions enforced by biome.json. Every unit must end Biome-clean and with the unit suite green. impactgraph / impactgraph-discovery identifiers and the dad_donor_session cookie are INTENTIONAL compatibility aliases and must never be renamed.",
+  "key_patterns": "Adapters are plain ESM classes that structurally satisfy a duck-typed interface (no `implements`). Subprocess calls go through command() in src/process.js using argv arrays (never shell strings). DadAdapter.logged() wraps a subprocess and writes `${label}.log` evidence on both success and failure. compose() prepends ['compose','-p',this.id,'-f',this.file]. Several phase methods currently INLINE the full ['compose','-p',this.id,'-f',this.file, ...] argv directly into logged() rather than calling compose(); Move 3 extracts a composeRun() helper that prepends those four elements and appends the rest verbatim. sql() uses `psql -X -v ON_ERROR_STOP=1` (both flags load-bearing). Mode branching: run.data.options.mode === 'exploration' vs acceptance changes which artifacts build() and database() emit and the summary strings — this branching stays in DAD, NOT in the base helper.",
+  "relevant_files": [
+    "src/dad.js (the monolith being split — read fully; contains freePort, composeDefinition, DadAdapter with all provisioning + validation-only methods)",
+    "src/targets.js (registry: targets/resolveTarget/isRegisteredAdapter — moves to src/targets/index.js with a shim)",
+    "src/benchmark-adapter.js (second in-process adapter — relocates to src/targets/benchmark.js with a shim; does NOT extend the base)",
+    "src/runner.js (MUST stay byte-identical; imports { DadAdapter } from './dad.js' at line 4 — kept on the shim)",
+    "src/discovery-runner.js (contains discoveryPolicy(); imports ./targets.js — repoint to ./targets/index.js)",
+    "src/cli.js, src/policy.js (import ./targets.js — repoint to ./targets/index.js)",
+    "src/process.js (command() — lowest subprocess point; stub it in argv-guard tests)",
+    "src/discovery-fixture.js (replayFixture, imported by dad replay fixture)",
+    "src/core.js (Run, RunError, digest)",
+    "test/adapter.test.js, test/experiments.test.js, test/fixture.postgres.js (import ../src/dad.js — resolve via shim)",
+    "test/targets.test.js (existing policy byte-identical test; extend with digest/JSON snapshot)",
+    "test/benchmark-adapter.test.js (imports ../src/benchmark-adapter.js and ../src/targets.js — resolve via shims)"
+  ],
+  "directory_structure": "src/ holds all engine + adapter modules flat today. Target layout: src/targets/index.js (registry), src/targets/base.js (ProvisioningAdapter + interface typedefs + shared helpers), src/targets/benchmark.js, src/targets/dad/{index.js,config.js,compose.js,sql.js}. Old paths src/targets.js, src/dad.js, src/benchmark-adapter.js become thin re-export shims. test/*.test.js are the unit suites; test/*.browser.js and test/fixture.postgres.js are infra-gated (not run here). policies/impactgraph-local.json is the default acceptance policy. Design + review live under .agents/tasks/."
+}
