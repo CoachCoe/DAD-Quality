@@ -39,9 +39,9 @@ Dashboard state is stored in `.atm/runs/.dashboard/state.json`. Only one dashboa
 - A local DAD checkout. The initial adapter targets revision `1d3bd1774a6f65398d8aed2bb6f58d9375794118`; pass `--revision` to pin it explicitly.
 - Network access to install dependencies and build images. Runtime application containers have no external network access.
 
-The DAD rebrand retains the versioned `impactgraph` adapter/policy identifiers,
-`impactgraph_atm` disposable database name, and evidence-key filenames so existing
-policies and retained reports stay compatible. New dashboard sessions default to the
+The DAD rebrand retains the versioned `impactgraph` adapter/policy identifiers and
+evidence-key filenames so existing policies, finding IDs and retained reports stay
+compatible. New dashboard sessions default to the
 sibling `../DAD-Main` checkout. A history directory remains bound to its original
 absolute repository path; moving a checkout requires a reviewed history migration,
 including source identities and finding assessments. Do not edit or delete history
@@ -149,6 +149,7 @@ Do not run global Docker prune commands to clean an ATM run. Retention is manual
 
 ```sh
 npm run check
+npm run lint      # lint and formatting; npm run format rewrites formatting
 npm test
 npm run test:browser
 ```

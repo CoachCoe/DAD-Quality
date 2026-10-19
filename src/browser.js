@@ -7,15 +7,29 @@ import { cleanEnvironment } from './process.js';
 export function allowedRequest(raw, method, origins, readOnly = false) {
   try {
     const url = new URL(raw);
-    return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && origins.includes(url.origin) && (!readOnly || ['GET', 'HEAD'].includes(method));
-  } catch { return false; }
+    return (
+      ['http:', 'https:'].includes(url.protocol) &&
+      !url.username &&
+      !url.password &&
+      origins.includes(url.origin) &&
+      (!readOnly || ['GET', 'HEAD'].includes(method))
+    );
+  } catch {
+    return false;
+  }
 }
 
 export async function openBrowser(origins, { readOnly = false, signal } = {}) {
   let browser;
   try {
-    browser = await chromium.launch({ headless: true, env: cleanEnvironment(), args: ['--host-resolver-rules=MAP *.localhost 127.0.0.1', '--disable-background-networking'] });
-  } catch (error) { throw new RunError(`Chromium unavailable: ${error.message}`); }
+    browser = await chromium.launch({
+      headless: true,
+      env: cleanEnvironment(),
+      args: ['--host-resolver-rules=MAP *.localhost 127.0.0.1', '--disable-background-networking'],
+    });
+  } catch (error) {
+    throw new RunError(`Chromium unavailable: ${error.message}`);
+  }
   const context = await browser.newContext({ serviceWorkers: 'block', acceptDownloads: false });
   context.setDefaultTimeout(15_000);
   const blocked = [];
@@ -39,16 +53,28 @@ export async function openBrowser(origins, { readOnly = false, signal } = {}) {
           blocked.push({ url: new URL(event.request.url).origin, method: event.request.method });
           await cdp.send('Fetch.failRequest', { requestId: event.requestId, errorReason: 'BlockedByClient' });
         }
-      } catch { /* A closed page cancels its paused requests. */ }
+      } catch {
+        /* A closed page cancels its paused requests. */
+      }
     });
     await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] });
-    page.on('popup', popup => { void popup.close().catch(() => {}); });
+    page.on('popup', popup => {
+      void popup.close().catch(() => {});
+    });
     return page;
   };
-  const abort = () => { void browser.close().catch(() => {}); };
+  const abort = () => {
+    void browser.close().catch(() => {});
+  };
   signal?.addEventListener('abort', abort, { once: true });
-  if (signal?.aborted) { await browser.close(); throw new RunError('Run canceled.', 'canceled'); }
-  const close = async () => { signal?.removeEventListener('abort', abort); await browser.close(); };
+  if (signal?.aborted) {
+    await browser.close();
+    throw new RunError('Run canceled.', 'canceled');
+  }
+  const close = async () => {
+    signal?.removeEventListener('abort', abort);
+    await browser.close();
+  };
   return { browser, context, blocked, close, newPage };
 }
 
@@ -67,7 +93,16 @@ export async function staffJourney(adapter, result) {
   try {
     const device = await session.context.newCDPSession(page);
     await device.send('WebAuthn.enable');
-    await device.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
+    await device.send('WebAuthn.addVirtualAuthenticator', {
+      options: {
+        protocol: 'ctap2',
+        transport: 'internal',
+        hasResidentKey: true,
+        hasUserVerification: true,
+        isUserVerified: true,
+        automaticPresenceSimulation: true,
+      },
+    });
     const invitation = await adapter.invitation();
     await page.goto(invitation);
     await page.getByRole('button', { name: 'Create a passkey', exact: true }).click();
@@ -94,7 +129,10 @@ export async function staffJourney(adapter, result) {
     await expectStatus(page, `${adapter.staffOrigin}/api/donor/staff/me`, 401);
     assert.deepEqual(errors, [], 'Unexpected browser JavaScript errors');
     assert.deepEqual(session.blocked, [], 'Unexpected outbound request attempts');
-    return { summary: 'Passkey activation, logout/login, persisted credentials and session revocation, invitation replay rejection, and public/staff host boundaries verified.' };
+    return {
+      summary:
+        'Passkey activation, logout/login, persisted credentials and session revocation, invitation replay rejection, and public/staff host boundaries verified.',
+    };
   } catch (error) {
     if (adapter.signal.aborted) throw new RunError('Run canceled.', 'canceled');
     if (signal.aborted) throw new RunError('Staff journey exceeded its time budget.');
@@ -105,7 +143,9 @@ export async function staffJourney(adapter, result) {
     try {
       await session.context.tracing.stop({ path: path.join(adapter.run.dir, 'evidence/staff-trace.zip') });
       result.evidence.push(await adapter.run.reference('evidence/staff-trace.zip'));
-    } finally { await session.close(); }
+    } finally {
+      await session.close();
+    }
   }
 }
 
@@ -113,7 +153,8 @@ export async function donorClaimJourney(adapter, result) {
   const signal = AbortSignal.any([adapter.signal, AbortSignal.timeout(180_000)]);
   const session = await openBrowser([adapter.publicOrigin], { signal });
   const page = await session.newPage();
-  const errors = [], verification = {};
+  const errors = [],
+    verification = {};
   page.on('pageerror', error => errors.push(error.message));
   await session.context.tracing.start({ screenshots: true, snapshots: true, sources: false });
   try {
@@ -141,14 +182,28 @@ export async function donorClaimJourney(adapter, result) {
     for (const link of fixture.links) {
       await page.goto(link);
       await page.getByRole('button', { name: 'Confirm and sign in', exact: true }).click();
-      await page.getByRole('alert').filter({ hasText: 'This link is invalid or expired. Request a new link.' }).waitFor();
+      await page
+        .getByRole('alert')
+        .filter({ hasText: 'This link is invalid or expired. Request a new link.' })
+        .waitFor();
       await expectStatus(page, `${adapter.publicOrigin}/api/donor/me/dashboard`, 401);
     }
     verification.afterReplay = await adapter.verifyDonor({ signedOut: true });
     assert.deepEqual(errors, [], 'Unexpected browser JavaScript errors');
     assert.deepEqual(session.blocked, [], 'Unexpected outbound request attempts');
-    verification.assertions = { authenticatedReload: true, correctDonorProfile: true, tokenRemoved: true, logoutDeniedAccess: true, replayRejected: true, siblingRejected: true, anonymousDenied: true };
-    return { summary: 'Donor claim, authenticated reload, persisted link consumption, logout revocation, replay and sibling-link rejection verified; unrelated donor unchanged.' };
+    verification.assertions = {
+      authenticatedReload: true,
+      correctDonorProfile: true,
+      tokenRemoved: true,
+      logoutDeniedAccess: true,
+      replayRejected: true,
+      siblingRejected: true,
+      anonymousDenied: true,
+    };
+    return {
+      summary:
+        'Donor claim, authenticated reload, persisted link consumption, logout revocation, replay and sibling-link rejection verified; unrelated donor unchanged.',
+    };
   } catch (error) {
     if (adapter.signal.aborted) throw new RunError('Run canceled.', 'canceled');
     if (signal.aborted) throw new RunError('Donor claim journey exceeded its time budget.');
@@ -157,9 +212,13 @@ export async function donorClaimJourney(adapter, result) {
     throw new RunError(error.message, 'failed');
   } finally {
     try {
-      result.evidence.push(await adapter.run.evidence('donor-verification.json', JSON.stringify(verification, null, 2)));
+      result.evidence.push(
+        await adapter.run.evidence('donor-verification.json', JSON.stringify(verification, null, 2)),
+      );
       await session.context.tracing.stop({ path: path.join(adapter.run.dir, 'evidence/donor-trace.zip') });
       result.evidence.push(await adapter.run.reference('evidence/donor-trace.zip'));
-    } finally { await session.close(); }
+    } finally {
+      await session.close();
+    }
   }
 }

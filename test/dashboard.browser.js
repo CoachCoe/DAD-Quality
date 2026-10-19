@@ -15,20 +15,40 @@ import { hashPolicy } from '../src/policy.js';
 test('dashboard supports run inspection, triage, launch, cancellation and mobile layout', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-ui-'));
   const failed = await Run.create(root, { adapter: 'impactgraph' }, ['staff-journey']);
-  failed.data.candidate = { revision: 'a'.repeat(40), source: '/synthetic/ImpactGraph' };
-  await failed.step('staff-journey', async result => { result.evidence.push(await failed.evidence('failure.log', 'Expected unauthorized request to be rejected.')); throw new RunError('Expected 401, received 200.', 'failed'); });
+  failed.data.candidate = { revision: 'a'.repeat(40), source: '/synthetic/DAD-Main' };
+  await failed.step('staff-journey', async result => {
+    result.evidence.push(await failed.evidence('failure.log', 'Expected unauthorized request to be rejected.'));
+    throw new RunError('Expected 401, received 200.', 'failed');
+  });
   await failed.finish();
   const passed = await Run.create(root, { adapter: 'impactgraph' }, ['staff-journey']);
-  passed.data.candidate = { revision: 'b'.repeat(40), source: '/synthetic/ImpactGraph' };
-  await passed.step('staff-journey', async result => { result.evidence.push(await passed.evidence('passed.log', 'Authorization checks passed.')); return { summary: 'Authorization checks passed.' }; });
+  passed.data.candidate = { revision: 'b'.repeat(40), source: '/synthetic/DAD-Main' };
+  await passed.step('staff-journey', async result => {
+    result.evidence.push(await passed.evidence('passed.log', 'Authorization checks passed.'));
+    return { summary: 'Authorization checks passed.' };
+  });
   await passed.finish();
-  const app = await createDashboardServer({ repo: '/synthetic/ImpactGraph', root, port: 0, resolve: async () => 'c'.repeat(40), executor: async options => {
-    const run = await Run.create(root, { adapter: 'impactgraph', trigger: options.trigger }, ['cleanup']); options.onCreated(run);
-    await new Promise(resolve => options.signal.addEventListener('abort', resolve, { once: true }));
-    await run.step('cleanup', async () => ({ summary: 'Cleaned up.' })); run.data.canceledAt = new Date().toISOString(); await run.finish();
-  } });
-  const browser = await chromium.launch({ headless: true });
-  t.after(async () => { await browser.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
+  const app = await createDashboardServer({
+    repo: '/synthetic/DAD-Main',
+    root,
+    port: 0,
+    resolve: async () => 'c'.repeat(40),
+    executor: async options => {
+      const run = await Run.create(root, { adapter: 'impactgraph', trigger: options.trigger }, ['cleanup']);
+      options.onCreated(run);
+      await new Promise(resolve => options.signal.addEventListener('abort', resolve, { once: true }));
+      await run.step('cleanup', async () => ({ summary: 'Cleaned up.' }));
+      run.data.canceledAt = new Date().toISOString();
+      await run.finish();
+    },
+  });
+  let browser;
+  t.after(async () => {
+    await browser?.close();
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1050 } });
   const page = await context.newPage();
   const errors = [];
@@ -37,7 +57,13 @@ test('dashboard supports run inspection, triage, launch, cancellation and mobile
   await page.getByRole('heading', { name: 'Latest candidate passed.' }).waitFor();
   const accessible = async () => {
     const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
-    assert.deepEqual(result.violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => ({ target: n.target, summary: n.failureSummary })) })), []);
+    assert.deepEqual(
+      result.violations.map(v => ({
+        id: v.id,
+        nodes: v.nodes.map(n => ({ target: n.target, summary: n.failureSummary })),
+      })),
+      [],
+    );
   };
   await accessible();
   await page.getByRole('button', { name: 'View evidence' }).click();
@@ -70,7 +96,11 @@ test('dashboard supports run inspection, triage, launch, cancellation and mobile
   await cancelButton.focus();
   await page.waitForResponse(response => /\/api\/runs\/atm-/.test(response.url()));
   await page.evaluate(() => new Promise(requestAnimationFrame));
-  assert.equal(await cancelButton.evaluate(button => button.isConnected && document.activeElement === button), true, 'Polling must preserve the focused run control');
+  assert.equal(
+    await cancelButton.evaluate(button => button.isConnected && document.activeElement === button),
+    true,
+    'Polling must preserve the focused run control',
+  );
   await page.getByRole('button', { name: 'Cancel validation' }).click();
   await page.getByRole('button', { name: 'Run this revision again' }).waitFor();
   assert.match(await page.locator('#run-detail').innerText(), /Canceled/);
@@ -85,9 +115,14 @@ test('dashboard supports run inspection, triage, launch, cancellation and mobile
 
 test('dashboard shows useful empty and malformed-run states', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-ui-empty-'));
-  const app = await createDashboardServer({ repo: '/synthetic/ImpactGraph', root, port: 0 });
-  const browser = await chromium.launch({ headless: true });
-  t.after(async () => { await browser.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
+  const app = await createDashboardServer({ repo: '/synthetic/DAD-Main', root, port: 0 });
+  let browser;
+  t.after(async () => {
+    await browser?.close();
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   await page.goto(app.origin);
   await page.getByRole('heading', { name: 'Your next release starts here.' }).waitFor();
@@ -103,17 +138,39 @@ test('dashboard shows useful empty and malformed-run states', async t => {
 test('policy evidence view distinguishes passing checks from blocked acceptance', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-ui-policy-'));
   const policy = await loadPolicy();
-  const run = await Run.create(root, { adapter: 'impactgraph' }, policy.definition.checks.filter(c => c.required).map(c => c.id), policy);
-  run.data.candidate = { revision: 'a'.repeat(40), source: '/synthetic/ImpactGraph', sourceArchiveSha256: 'b'.repeat(64), images: { api: `sha256:${'c'.repeat(64)}`, web: `sha256:${'d'.repeat(64)}` } };
+  const run = await Run.create(
+    root,
+    { adapter: 'impactgraph' },
+    policy.definition.checks.filter(c => c.required).map(c => c.id),
+    policy,
+  );
+  run.data.candidate = {
+    revision: 'a'.repeat(40),
+    source: '/synthetic/DAD-Main',
+    sourceArchiveSha256: 'b'.repeat(64),
+    images: { api: `sha256:${'c'.repeat(64)}`, web: `sha256:${'d'.repeat(64)}` },
+  };
   for (const check of policy.definition.checks) {
     const evidence = [];
     for (const name of check.evidence) evidence.push(await run.evidence(name, `Synthetic ${name}`));
-    run.data.results.push({ id: check.id, status: 'passed', required: check.required, summary: 'Synthetic verification', finishedAt: run.data.startedAt, evidence });
+    run.data.results.push({
+      id: check.id,
+      status: 'passed',
+      required: check.required,
+      summary: 'Synthetic verification',
+      finishedAt: run.data.startedAt,
+      evidence,
+    });
   }
   await run.finish();
   const app = await createDashboardServer({ repo: run.data.candidate.source, root, port: 0 });
-  const browser = await chromium.launch({ headless: true });
-  t.after(async () => { await browser.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
+  let browser;
+  t.after(async () => {
+    await browser?.close();
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  browser = await chromium.launch({ headless: true });
   const context = await browser.newContext();
   const page = await context.newPage();
   await page.goto(app.origin);
@@ -122,7 +179,12 @@ test('policy evidence view distinguishes passing checks from blocked acceptance'
   await page.getByText(`impactgraph-local · ${policy.definition.version}`, { exact: true }).waitFor();
   await page.getByText('donor-claim-journey · v1', { exact: true }).click();
   await page.getByText('Sign-out revokes session', { exact: true }).waitFor();
-  assert.deepEqual((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => ({ target: n.target, summary: n.failureSummary })) })), []);
+  assert.deepEqual(
+    (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations.map(
+      v => ({ id: v.id, nodes: v.nodes.map(n => ({ target: n.target, summary: n.failureSummary })) }),
+    ),
+    [],
+  );
   await writeFile(path.join(run.dir, 'evidence/donor-verification.json'), 'tampered');
   await page.getByText('Blocked', { exact: true }).waitFor();
   assert.match(await page.locator('#run-detail').innerText(), /changed evidence evidence\/donor-verification.json/);
@@ -133,35 +195,75 @@ test('policy evidence view distinguishes passing checks from blocked acceptance'
 
 test('performance view compares candidates, remains accessible on mobile and rejects changed evidence', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'atm-ui-performance-'));
-  const policy = await loadPolicy(), profile = policy.definition.checks.find(c => c.id === 'performance').profile;
+  const policy = await loadPolicy(),
+    profile = policy.definition.checks.find(c => c.id === 'performance').profile;
   const environment = { kind: 'local', platform: 'fixture', arch: 'fixture', cpus: 2 };
   let latest;
   for (let i = 0; i < 2; i++) {
     const run = await Run.create(root, { adapter: 'impactgraph' }, [], policy);
     run.data.startedAt = `2026-10-0${i + 1}T00:00:00.000Z`;
-    run.data.candidate = { source: '/synthetic/ImpactGraph', revision: (i ? 'b' : 'a').repeat(40) };
+    run.data.candidate = { source: '/synthetic/DAD-Main', revision: (i ? 'b' : 'a').repeat(40) };
     const sample = { ms: i ? 100 : 20, status: 200, error: null };
-    const report = { schemaVersion: 1, profile, workloadDigest: hashPolicy(profile), environment, environmentDigest: hashPolicy(environment), completed: true, phases: profile.phases.map(p => ({ ...p, elapsedMs: p.durationMs, capped: false, ...metrics(Array(120).fill(sample), p.durationMs), endpoints: Object.fromEntries(['content', 'dashboard', 'gifts'].map(name => [name, metrics(Array(40).fill(sample), p.durationMs)])) })) };
+    const report = {
+      schemaVersion: 1,
+      profile,
+      workloadDigest: hashPolicy(profile),
+      environment,
+      environmentDigest: hashPolicy(environment),
+      completed: true,
+      phases: profile.phases.map(p => ({
+        ...p,
+        elapsedMs: p.durationMs,
+        capped: false,
+        ...metrics(Array(120).fill(sample), p.durationMs),
+        endpoints: Object.fromEntries(
+          ['content', 'dashboard', 'gifts'].map(name => [name, metrics(Array(40).fill(sample), p.durationMs)]),
+        ),
+      })),
+    };
     report.assessment = assessPerformance(report);
-    run.data.results = [{ id: 'performance', status: 'passed', required: false, finishedAt: run.data.startedAt, summary: 'Synthetic performance fixture', evidence: [await run.evidence('performance.json', JSON.stringify(report))] }];
-    await run.finish(); latest = run;
+    run.data.results = [
+      {
+        id: 'performance',
+        status: 'passed',
+        required: false,
+        finishedAt: run.data.startedAt,
+        summary: 'Synthetic performance fixture',
+        evidence: [await run.evidence('performance.json', JSON.stringify(report))],
+      },
+    ];
+    await run.finish();
+    latest = run;
   }
-  const app = await createDashboardServer({ repo: '/synthetic/ImpactGraph', root, port: 0 });
-  const browser = await chromium.launch({ headless: true });
-  t.after(async () => { await browser.close(); await app.close(); await rm(root, { recursive: true, force: true }); });
+  const app = await createDashboardServer({ repo: '/synthetic/DAD-Main', root, port: 0 });
+  let browser;
+  t.after(async () => {
+    await browser?.close();
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+  });
+  browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1050 } });
   const page = await context.newPage();
   await page.goto(app.origin);
   await page.getByRole('button', { name: 'View evidence' }).click();
   await page.getByRole('heading', { name: 'Performance · Advisory' }).waitFor();
   await page.getByText(/Regression signal detected against/).waitFor();
-  assert.match(await page.getByRole('region', { name: 'Performance report' }).innerText(), /baseline\/overall: p95 \+80\.0 ms/);
+  assert.match(
+    await page.getByRole('region', { name: 'Performance report' }).innerText(),
+    /baseline\/overall: p95 \+80\.0 ms/,
+  );
   assert.equal(await page.getByRole('columnheader', { name: 'p99 ms' }).count(), 1);
   await mkdir('.atm/ui', { recursive: true });
   await page.screenshot({ path: '.atm/ui/performance-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-  assert.deepEqual((await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations.map(v => ({ id: v.id, nodes: v.nodes.map(n => n.target) })), []);
+  assert.deepEqual(
+    (await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()).violations.map(
+      v => ({ id: v.id, nodes: v.nodes.map(n => n.target) }),
+    ),
+    [],
+  );
   await page.screenshot({ path: '.atm/ui/performance-mobile.png', fullPage: true });
   await writeFile(path.join(latest.dir, 'evidence/performance.json'), '{}');
   await page.getByText('Performance evidence integrity failed.', { exact: true }).waitFor();

@@ -2,7 +2,11 @@
 export async function replayFixture({ snapshot, restore, stop, start, inspect }) {
   await stop();
   let baseline;
-  try { baseline = await snapshot(); } finally { await start(); }
+  try {
+    baseline = await snapshot();
+  } finally {
+    await start();
+  }
   let busy = false;
   return {
     inspect,
@@ -11,15 +15,27 @@ export async function replayFixture({ snapshot, restore, stop, start, inspect })
       busy = true;
       let current;
       try {
-        await stop(); current = await snapshot(); await restore(baseline); await start();
+        await stop();
+        current = await snapshot();
+        await restore(baseline);
+        await start();
       } catch (error) {
-        try { if (current !== undefined) await restore(current); await start(); }
-        finally { busy = false; }
+        try {
+          if (current !== undefined) await restore(current);
+          await start();
+        } finally {
+          busy = false;
+        }
         throw error;
       }
       return async () => {
-        try { await stop(); await restore(current); await start(); }
-        finally { busy = false; }
+        try {
+          await stop();
+          await restore(current);
+          await start();
+        } finally {
+          busy = false;
+        }
       };
     },
   };

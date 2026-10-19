@@ -6,42 +6,88 @@ export function modelConfig({ providerName, model, apiKey, env = process.env } =
   const keyVariable = name === 'tinker' ? 'TINKER_API_KEY' : 'OPENAI_API_KEY';
   const key = apiKey ?? env[keyVariable];
   const selectedModel = model ?? env.ATM_MODEL;
-  return { providerName: name, model: selectedModel, apiKey: key, keyVariable, configured: Boolean(key?.trim() && selectedModel?.trim()), label: name === 'tinker' ? 'Tinker Messages API' : 'OpenAI Responses API' };
+  return {
+    providerName: name,
+    model: selectedModel,
+    apiKey: key,
+    keyVariable,
+    configured: Boolean(key?.trim() && selectedModel?.trim()),
+    label: name === 'tinker' ? 'Tinker Messages API' : 'OpenAI Responses API',
+  };
 }
 
 export function requireModelConfig(options) {
   const config = modelConfig(options);
-  if (!config.configured) throw new RunError(`Configure ${config.keyVariable} and --model or ATM_MODEL for ${config.providerName}.`);
+  if (!config.configured)
+    throw new RunError(`Configure ${config.keyVariable} and --model or ATM_MODEL for ${config.providerName}.`);
   return config;
 }
 
 // This adapter accepts structured tool calls only. Page text never becomes an
 // executable command, and provider bodies/errors are never copied into reports.
-export function tinkerToolProvider({ apiKey, model, tool, instructions, maxOutputTokens, validate, fetchImpl = fetch }) {
+export function tinkerToolProvider({
+  apiKey,
+  model,
+  tool,
+  instructions,
+  maxOutputTokens,
+  validate,
+  fetchImpl = fetch,
+}) {
   ({ apiKey, model } = requireModelConfig({ providerName: 'tinker', apiKey, model }));
   return async ({ input, signal }) => {
     let response;
     try {
       response = await fetchImpl('https://tinker.thinkingmachines.dev/services/tinker-prod/anthropic/api/v1/messages', {
-        method: 'POST', signal,
+        method: 'POST',
+        signal,
         headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, max_tokens: maxOutputTokens, system: instructions, messages: [{ role: 'user', content: input }], tools: [{ name: tool.name, description: tool.description, input_schema: tool.parameters }], tool_choice: { type: 'tool', name: tool.name, disable_parallel_tool_use: true } }),
+        body: JSON.stringify({
+          model,
+          max_tokens: maxOutputTokens,
+          system: instructions,
+          messages: [{ role: 'user', content: input }],
+          tools: [{ name: tool.name, description: tool.description, input_schema: tool.parameters }],
+          tool_choice: { type: 'tool', name: tool.name, disable_parallel_tool_use: true },
+        }),
       });
     } catch {
       throw new RunError(signal?.aborted ? 'Tinker request canceled or timed out.' : 'Could not reach Tinker.');
     }
     if (!response.ok) throw new RunError(`Tinker returned HTTP ${response.status}.`);
     let body;
-    try { body = await response.json(); } catch { throw new RunError('Tinker returned an invalid response.'); }
-    const counts = [body?.usage?.input_tokens, body?.usage?.output_tokens, body?.usage?.cache_read_input_tokens ?? 0, body?.usage?.cache_creation_input_tokens ?? 0];
+    try {
+      body = await response.json();
+    } catch {
+      throw new RunError('Tinker returned an invalid response.');
+    }
+    const counts = [
+      body?.usage?.input_tokens,
+      body?.usage?.output_tokens,
+      body?.usage?.cache_read_input_tokens ?? 0,
+      body?.usage?.cache_creation_input_tokens ?? 0,
+    ];
     const total = counts.reduce((sum, count) => sum + count, 0);
-    const tokens = counts.every(count => Number.isSafeInteger(count) && count >= 0) && Number.isSafeInteger(total) ? total : undefined;
+    const tokens =
+      counts.every(count => Number.isSafeInteger(count) && count >= 0) && Number.isSafeInteger(total)
+        ? total
+        : undefined;
     const failure = message => Object.assign(new RunError(message), tokens === undefined ? {} : { tokens });
     const calls = Array.isArray(body?.content) ? body.content.filter(item => item?.type === 'tool_use') : [];
-    if (body?.stop_reason !== 'tool_use' || calls.length !== 1 || calls[0].name !== tool.name) throw failure('Tinker did not complete exactly one supported action.');
+    if (body?.stop_reason !== 'tool_use' || calls.length !== 1 || calls[0].name !== tool.name)
+      throw failure('Tinker did not complete exactly one supported action.');
     let action;
-    try { action = validate(calls[0].input); } catch { throw failure('Tinker returned an invalid action.'); }
+    try {
+      action = validate(calls[0].input);
+    } catch {
+      throw failure('Tinker returned an invalid action.');
+    }
     if (tokens === undefined) throw new RunError('Tinker omitted valid token accounting.');
-    return { action, tokens, usage: { input_tokens: counts[0], output_tokens: counts[1], total_tokens: tokens }, responseId: typeof body.id === 'string' ? body.id : undefined };
+    return {
+      action,
+      tokens,
+      usage: { input_tokens: counts[0], output_tokens: counts[1], total_tokens: tokens },
+      responseId: typeof body.id === 'string' ? body.id : undefined,
+    };
   };
 }

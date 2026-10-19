@@ -5,7 +5,8 @@ import { chromium } from 'playwright';
 
 const origin = process.env.ATM_DASHBOARD_URL ?? 'http://127.0.0.1:4310';
 const target = new URL(origin);
-if (target.protocol !== 'http:' || target.hostname !== '127.0.0.1') throw new Error('Live QA only targets an ATM dashboard on loopback.');
+if (target.protocol !== 'http:' || target.hostname !== '127.0.0.1')
+  throw new Error('Live QA only targets an ATM dashboard on loopback.');
 await mkdir('.atm/ui', { recursive: true, mode: 0o700 });
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1050 } });
@@ -16,7 +17,9 @@ try {
   await page.getByRole('heading', { name: 'Release overview' }).waitFor();
   await page.getByRole('button', { name: 'Run validation' }).click();
   await page.getByLabel('Commit, branch, or tag').fill('HEAD');
-  const request = page.waitForResponse(response => response.url() === `${origin}/api/runs` && response.request().method() === 'POST');
+  const request = page.waitForResponse(
+    response => response.url() === `${origin}/api/runs` && response.request().method() === 'POST',
+  );
   await page.getByRole('button', { name: 'Start validation' }).click();
   const response = await request;
   assert.equal(response.status(), 202);
@@ -24,7 +27,14 @@ try {
   console.log(`Dashboard launched ${id}`);
   await page.getByRole('button', { name: 'Run this revision again' }).waitFor({ timeout: 900_000 });
   const detail = await (await fetch(`${origin}/api/runs/${id}`)).json();
-  await writeFile('.atm/ui/live-acceptance.json', JSON.stringify({ id, decision: detail.run.decision, release: detail.release, integrity: detail.integrity, errors }, null, 2));
+  await writeFile(
+    '.atm/ui/live-acceptance.json',
+    JSON.stringify(
+      { id, decision: detail.run.decision, release: detail.release, integrity: detail.integrity, errors },
+      null,
+      2,
+    ),
+  );
   assert.equal(detail.run.decision.status, 'passed', JSON.stringify(detail.run.decision.reasons));
   assert.equal(detail.integrity.status, 'verified');
   assert.equal(detail.run.results.find(r => r.id === 'donor-claim-journey')?.status, 'passed');
@@ -39,4 +49,6 @@ try {
   await page.screenshot({ path: '.atm/ui/overview-mobile.png', fullPage: true });
   assert.deepEqual(errors, []);
   console.log(`Live dashboard acceptance passed: ${id}`);
-} finally { await browser.close(); }
+} finally {
+  await browser.close();
+}

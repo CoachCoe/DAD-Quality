@@ -4,8 +4,11 @@ import { command, cleanEnvironment } from '../src/process.js';
 
 test('child processes do not inherit provider or application credentials', () => {
   process.env.ATM_TEST_SECRET = 'should-not-leak';
-  try { assert.equal(cleanEnvironment().ATM_TEST_SECRET, undefined); }
-  finally { delete process.env.ATM_TEST_SECRET; }
+  try {
+    assert.equal(cleanEnvironment().ATM_TEST_SECRET, undefined);
+  } finally {
+    delete process.env.ATM_TEST_SECRET;
+  }
   assert.equal(cleanEnvironment({ SYNTHETIC: 'yes' }).SYNTHETIC, 'yes');
 });
 
@@ -16,12 +19,21 @@ test('command uses argument arrays without shell interpolation', async () => {
 });
 
 test('nonzero exit retains diagnostic output and supplied classification', async () => {
-  await assert.rejects(command(process.execPath, ['-e', 'console.error("assertion failed");process.exit(1)'], { failureStatus: 'failed' }), e => e.status === 'failed' && e.stderr.includes('assertion failed'));
+  await assert.rejects(
+    command(process.execPath, ['-e', 'console.error("assertion failed");process.exit(1)'], { failureStatus: 'failed' }),
+    e => e.status === 'failed' && e.stderr.includes('assertion failed'),
+  );
 });
 
 test('hung commands and excess output are inconclusive', async () => {
-  await assert.rejects(command(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { timeout: 100 }), e => e.status === 'inconclusive' && e.message.includes('timeout'));
-  await assert.rejects(command(process.execPath, ['-e', 'process.stdout.write("x".repeat(2000))'], { maxBytes: 100 }), e => e.status === 'inconclusive' && e.message.includes('output limit'));
+  await assert.rejects(
+    command(process.execPath, ['-e', 'setInterval(()=>{},1000)'], { timeout: 100 }),
+    e => e.status === 'inconclusive' && e.message.includes('timeout'),
+  );
+  await assert.rejects(
+    command(process.execPath, ['-e', 'process.stdout.write("x".repeat(2000))'], { maxBytes: 100 }),
+    e => e.status === 'inconclusive' && e.message.includes('output limit'),
+  );
 });
 
 test('cancellation terminates an active process', async () => {
