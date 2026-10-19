@@ -492,6 +492,7 @@ INSERT INTO donor_metric_projections(id,donor_id,net_minor,computed_at,next_refr
         description: `Claimed synthetic donor explorer-${label}@atm.invalid; one USD ${(amount / 100).toFixed(2)} gift`,
         entry: '/account/dashboard',
         cookie: token,
+        cookieName: 'dad_donor_session',
       });
     }
     statements.push('COMMIT;');

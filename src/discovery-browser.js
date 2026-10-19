@@ -103,7 +103,13 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
     await context.clearCookies();
     if (who.cookie)
       await context.addCookies([
-        { name: 'dad_donor_session', value: who.cookie, url: origin, httpOnly: true, sameSite: 'Lax' },
+        {
+          name: who.cookieName ?? 'dad_donor_session',
+          value: who.cookie,
+          url: origin,
+          httpOnly: true,
+          sameSite: 'Lax',
+        },
       ]);
   };
   const settle = async target => {
