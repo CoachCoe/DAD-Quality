@@ -273,6 +273,9 @@ test('discovery loop records a defect in real browser evidence and dashboard exp
   const page = await context.newPage();
   await page.goto(dashboard.origin);
   await page.getByRole('heading', { name: 'Latest exploration completed.' }).waitFor();
+  const metricsText = await page.locator('.metrics').innerText();
+  assert.match(metricsText, /0 validations · 1 exploration/);
+  assert.match(metricsText, /Passed validations\s*0\s*\/ 0/);
   await page.getByRole('button', { name: 'View evidence' }).click();
   await page.getByRole('heading', { name: /Autonomous discovery · completed/ }).waitFor();
   assert.match(await page.locator('#run-detail').innerText(), /Catalog returns server failure · reproduced/);
