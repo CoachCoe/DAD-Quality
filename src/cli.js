@@ -7,6 +7,7 @@ import { evaluate, redact, verifyEvidence } from './core.js';
 import { executeRun } from './runner.js';
 import { executeDiscovery } from './discovery-runner.js';
 import { assessRelease } from './release.js';
+import { resolveTarget } from './targets.js';
 
 const help = `ATM — local application quality runner
 
@@ -17,6 +18,7 @@ const help = `ATM — local application quality runner
 
 Options:
   --output DIR      Evidence root (default .atm/runs)
+  --target NAME     Discovery target: dad (default) or benchmark (explore only; in-process, no --repo)
   --policy FILE     Versioned local acceptance policy (default policies/impactgraph-local.json)
   --ai              Add advisory AI exploration; requires provider key and --model/ATM_MODEL
   --provider NAME   openai (default) or tinker; also ATM_PROVIDER
@@ -47,6 +49,7 @@ export async function main(args = process.argv.slice(2)) {
       model: { type: 'string' },
       provider: { type: 'string' },
       'max-requests': { type: 'string' },
+      target: { type: 'string', default: 'dad' },
       help: { type: 'boolean', default: false },
     },
   });
@@ -84,9 +87,17 @@ export async function main(args = process.argv.slice(2)) {
         ? explorationExit(decision)
         : exitCode(decision, release);
   }
-  if (!['run', 'explore'].includes(positionals[0]) || positionals.length !== 1 || !values.repo)
+  if (!['run', 'explore'].includes(positionals[0]) || positionals.length !== 1)
     throw new Error('Use: npm run atm -- run|explore --repo /path/to/DAD-Main');
   const discovery = positionals[0] === 'explore';
+  // Validate the target early so an unknown name errors before provisioning.
+  resolveTarget(values.target);
+  if (!discovery && values.target !== 'dad')
+    throw new Error('run targets DAD only; use explore --target for alternative discovery targets.');
+  // Non-dad targets (e.g. benchmark) provision in-process and need no --repo;
+  // run and explore --target dad still require a source repository.
+  if (!values.repo && values.target === 'dad')
+    throw new Error('Use: npm run atm -- run|explore --repo /path/to/DAD-Main');
   if (discovery && (values.ai || values['require-ai'] || values.policy))
     throw new Error('Explore uses its own discovery contract; omit --ai, --require-ai and --policy.');
   if (!discovery && values['max-requests'] !== undefined) throw new Error('--max-requests applies only to explore.');
@@ -113,6 +124,7 @@ export async function main(args = process.argv.slice(2)) {
       model,
       providerName: values.provider,
       maxRequests: values['max-requests'] === undefined ? undefined : Number(values['max-requests']),
+      target: values.target,
       signal: controller.signal,
     });
   } finally {

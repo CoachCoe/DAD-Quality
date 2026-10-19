@@ -1,3 +1,4 @@
+import { BenchmarkAdapter } from './benchmark-adapter.js';
 import { DadAdapter } from './dad.js';
 
 // Registry of discovery targets. Each entry maps a target name to the adapter
@@ -9,6 +10,11 @@ export const targets = {
     adapterFactory: (run, options) => new DadAdapter(run, options),
     policyId: 'impactgraph-discovery',
     adapterId: 'impactgraph',
+  },
+  benchmark: {
+    adapterFactory: (run, options) => new BenchmarkAdapter(run, options),
+    policyId: 'benchmark-discovery',
+    adapterId: 'benchmark',
   },
 };
 
