@@ -1,4 +1,3 @@
-// Tracked files that must exist in the archived revision.
 export const requiredFiles = ['apps/donor-api/Dockerfile', 'apps/web/Dockerfile', 'apps/web/package-lock.json'];
 
 export const buildServices = [

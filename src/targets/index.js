@@ -1,10 +1,8 @@
 import { BenchmarkAdapter } from './benchmark.js';
 import { DadAdapter } from './dad/index.js';
 
-// Registry of discovery targets. Each entry maps a target name to the adapter
-// factory that provisions it and the policy/adapter identity it emits. DAD's
-// identifiers ('impactgraph-discovery', 'impactgraph') are retained verbatim so
-// ledger and finding compatibility is preserved.
+// DAD keeps its original impactgraph identifiers so existing ledgers, policies
+// and finding IDs remain valid.
 export const targets = {
   dad: {
     adapterFactory: (run, options) => new DadAdapter(run, options),
