@@ -7,7 +7,7 @@ import { sourceReader } from '../src/source-reader.js';
 import { experimentPlan } from '../src/experiments.js';
 import { discover, evaluateExpectation } from '../src/discovery.js';
 import { replayFixture } from '../src/discovery-fixture.js';
-import { DadAdapter } from '../src/dad.js';
+import { DadAdapter } from '../src/targets/dad/index.js';
 import { benchmarkMetrics } from '../src/discovery-benchmark.js';
 
 const action = (kind, fields = {}) => ({

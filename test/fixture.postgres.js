@@ -4,7 +4,8 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { DadAdapter, composeDefinition } from '../src/dad.js';
+import { DadAdapter } from '../src/targets/dad/index.js';
+import { composeDefinition } from '../src/targets/dad/compose.js';
 
 // Explicit Docker integration: no published ports, mounts, or existing databases.
 test('PostgreSQL fixture replay restores data and application grants, then restores the working state', async t => {

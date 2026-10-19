@@ -272,7 +272,7 @@ test('discovery loop records a defect in real browser evidence and dashboard exp
   const context = await chromiumBrowser.newContext({ viewport: { width: 1280, height: 960 } });
   const page = await context.newPage();
   await page.goto(dashboard.origin);
-  await page.getByRole('heading', { name: 'Latest exploration recorded.' }).waitFor();
+  await page.getByRole('heading', { name: 'Latest exploration completed.' }).waitFor();
   await page.getByRole('button', { name: 'View evidence' }).click();
   await page.getByRole('heading', { name: /Autonomous discovery · completed/ }).waitFor();
   assert.match(await page.locator('#run-detail').innerText(), /Catalog returns server failure · reproduced/);

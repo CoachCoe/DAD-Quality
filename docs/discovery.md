@@ -30,6 +30,10 @@ lowers the request cap; a partial run remains inconclusive. Three consecutive
 rejected experiment plans stop the run early with retained evidence. Source and
 memory tools run directly, outside the browser-action checks in a contract.
 
+To try discovery without Docker or a DAD checkout, `npm run explore -- --target benchmark`
+runs the healthy synthetic profile application from the quality benchmark in-process.
+It needs the same model configuration and records its own `benchmark-discovery` policy.
+
 To use **Explore application** in the dashboard with that file:
 
 ```sh

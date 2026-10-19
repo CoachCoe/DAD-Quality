@@ -1,5 +1,5 @@
 import { RunError, digest, redact } from './core.js';
-import { requireModelConfig, tinkerToolProvider } from './model-provider.js';
+import { requireModelConfig, toolProvider } from './model-provider.js';
 import { expectations, experimentPlan, coverageSummary } from './experiments.js';
 import {
   actionMatches,
@@ -100,20 +100,14 @@ export function validateDiscoveryAction(value) {
 }
 
 export function discoveryProvider({ apiKey, model, providerName, fetchImpl = fetch } = {}) {
-  const config = requireModelConfig({ apiKey, model, providerName });
-  ({ apiKey, model } = config);
-  const tinker =
-    config.providerName === 'tinker'
-      ? tinkerToolProvider({
-          apiKey,
-          model,
-          tool: discoveryTool,
-          instructions: discoveryInstructions,
-          maxOutputTokens: discoveryLimits.outputTokens,
-          validate: validateDiscoveryAction,
-          fetchImpl,
-        })
-      : null;
+  const decide = toolProvider({
+    ...requireModelConfig({ apiKey, model, providerName }),
+    tool: discoveryTool,
+    instructions: discoveryInstructions,
+    maxOutputTokens: discoveryLimits.outputTokens,
+    validate: validateDiscoveryAction,
+    fetchImpl,
+  });
   return async ({
     observation,
     history,
@@ -159,36 +153,9 @@ export function discoveryProvider({ apiKey, model, providerName, fetchImpl = fet
       input = JSON.stringify(context);
     }
     if (input.length > 60_000) throw new RunError('Discovery context exceeds its input budget.');
-    if (tinker) return tinker({ input, signal });
-    const response = await fetchImpl('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      signal,
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        store: false,
-        instructions: discoveryInstructions,
-        input,
-        tools: [discoveryTool],
-        tool_choice: { type: 'function', name: discoveryTool.name },
-        parallel_tool_calls: false,
-        max_output_tokens: discoveryLimits.outputTokens,
-      }),
-    });
-    if (!response.ok) throw new RunError(`Discovery provider returned HTTP ${response.status}.`);
-    const body = await response.json();
-    const calls = body.output?.filter(item => item.type === 'function_call') ?? [];
-    if (body.status !== 'completed' || calls.length !== 1 || calls[0].name !== discoveryTool.name)
-      throw new RunError('Discovery provider did not complete one supported action.');
-    let action;
-    try {
-      action = validateDiscoveryAction(JSON.parse(calls[0].arguments));
-    } catch {
-      throw new RunError('Discovery provider returned an invalid action.');
-    }
-    if (!Number.isInteger(body.usage?.total_tokens) || body.usage.total_tokens < 0)
-      throw new RunError('Discovery provider omitted token accounting.');
-    return { action, tokens: body.usage.total_tokens };
+    const decision = await decide({ input, signal });
+    if (decision.tokens === undefined) throw new RunError('Discovery provider omitted token accounting.');
+    return decision;
   };
 }
 

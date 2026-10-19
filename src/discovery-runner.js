@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { modelConfig } from './model-provider.js';
-import { Run, RunError, digest, atomicJSON, redact } from './core.js';
+import { Run, RunError, digest, atomicJSON, redactJSON } from './core.js';
 import { discover, discoveryProvider, discoveryLimits, discoveryInstructions } from './discovery.js';
 import { openDiscoveryBrowser } from './discovery-browser.js';
 import { discoveryMemory } from './discovery-report.js';
@@ -126,12 +126,7 @@ export async function executeDiscovery({
           warnings: [...warnings, ...carried.warnings],
         };
         const update = async () => {
-          // Redact string values before serializing, so hostile page text such as
-          // "Cookie: ..." cannot make a JSON report syntactically invalid.
-          const safe = JSON.parse(
-            JSON.stringify(report, (_key, value) => (typeof value === 'string' ? redact(value) : value)),
-          );
-          await atomicJSON(path.join(run.dir, 'evidence/discovery.json'), safe);
+          await atomicJSON(path.join(run.dir, 'evidence/discovery.json'), redactJSON(report));
           const reference = await run.reference('evidence/discovery.json');
           result.evidence = result.evidence.filter(e => e.path !== reference.path);
           result.evidence.push(reference);
@@ -152,12 +147,7 @@ export async function executeDiscovery({
               })),
           };
           result.evidence = result.evidence.filter(e => e.path !== 'evidence/discovery-regressions.json');
-          await atomicJSON(
-            path.join(run.dir, 'evidence/discovery-regressions.json'),
-            JSON.parse(
-              JSON.stringify(regressions, (_key, value) => (typeof value === 'string' ? redact(value) : value)),
-            ),
-          );
+          await atomicJSON(path.join(run.dir, 'evidence/discovery-regressions.json'), redactJSON(regressions));
           result.evidence.push(await run.reference('evidence/discovery-regressions.json'));
           await run.save();
         };
@@ -176,12 +166,7 @@ export async function executeDiscovery({
           });
           report.applicationMemory = knowledge.overview;
           report.warnings.push(...knowledge.index.warnings);
-          await atomicJSON(
-            path.join(run.dir, 'evidence/application-memory.json'),
-            JSON.parse(
-              JSON.stringify(knowledge.index, (_key, value) => (typeof value === 'string' ? redact(value) : value)),
-            ),
-          );
+          await atomicJSON(path.join(run.dir, 'evidence/application-memory.json'), redactJSON(knowledge.index));
           result.evidence.push(await run.reference('evidence/application-memory.json'));
           const fixture = adapter.discoveryReplayFixture ? await adapter.discoveryReplayFixture() : undefined;
           report.sourceContext = {

@@ -83,6 +83,16 @@ async function expectStatus(page, url, status) {
   assert.equal(response?.status(), status, `Expected ${status} for ${new URL(url).pathname}`);
 }
 
+// Browser and transport failures are inconclusive; anything else the journey
+// observed is a product failure.
+function journeyError(error, adapter, signal, label) {
+  if (adapter.signal.aborted) return new RunError('Run canceled.', 'canceled');
+  if (signal.aborted) return new RunError(`${label} exceeded its time budget.`);
+  if (error instanceof RunError) return error;
+  if (/net::ERR_|browser has been closed|Target closed/i.test(error.message)) return new RunError(error.message);
+  return new RunError(error.message, 'failed');
+}
+
 export async function staffJourney(adapter, result) {
   const signal = AbortSignal.any([adapter.signal, AbortSignal.timeout(180_000)]);
   const session = await openBrowser([adapter.publicOrigin, adapter.staffOrigin], { signal });
@@ -134,11 +144,7 @@ export async function staffJourney(adapter, result) {
         'Passkey activation, logout/login, persisted credentials and session revocation, invitation replay rejection, and public/staff host boundaries verified.',
     };
   } catch (error) {
-    if (adapter.signal.aborted) throw new RunError('Run canceled.', 'canceled');
-    if (signal.aborted) throw new RunError('Staff journey exceeded its time budget.');
-    if (error instanceof RunError) throw error;
-    if (/net::ERR_|browser has been closed|Target closed/i.test(error.message)) throw new RunError(error.message);
-    throw new RunError(error.message, 'failed');
+    throw journeyError(error, adapter, signal, 'Staff journey');
   } finally {
     try {
       await session.context.tracing.stop({ path: path.join(adapter.run.dir, 'evidence/staff-trace.zip') });
@@ -205,11 +211,7 @@ export async function donorClaimJourney(adapter, result) {
         'Donor claim, authenticated reload, persisted link consumption, logout revocation, replay and sibling-link rejection verified; unrelated donor unchanged.',
     };
   } catch (error) {
-    if (adapter.signal.aborted) throw new RunError('Run canceled.', 'canceled');
-    if (signal.aborted) throw new RunError('Donor claim journey exceeded its time budget.');
-    if (error instanceof RunError) throw error;
-    if (/net::ERR_|browser has been closed|Target closed/i.test(error.message)) throw new RunError(error.message);
-    throw new RunError(error.message, 'failed');
+    throw journeyError(error, adapter, signal, 'Donor claim journey');
   } finally {
     try {
       result.evidence.push(

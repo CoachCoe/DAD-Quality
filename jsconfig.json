@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "lib": ["ES2023", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "strictNullChecks": false,
+    "target": "ES2023",
+    "types": ["node"],
+    "useUnknownInCatchVariables": false
+  },
+  "include": [
+    "src/core.js",
+    "src/experiment-contract.js",
+    "src/experiments.js",
+    "src/model-provider.js",
+    "src/performance-config.js",
+    "src/scenarios.js",
+    "src/source-reader.js",
+    "src/targets/dad/compose.js",
+    "src/targets/dad/config.js"
+  ]
+}

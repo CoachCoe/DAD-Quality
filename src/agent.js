@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { openBrowser } from './browser.js';
 import { RunError, digest, redact } from './core.js';
-import { modelConfig, requireModelConfig, tinkerToolProvider } from './model-provider.js';
+import { modelConfig, requireModelConfig, toolProvider } from './model-provider.js';
 
 const scenario = {
   id: 'public-donation-discovery',
@@ -45,40 +45,6 @@ export function validateAction(value) {
   return value;
 }
 
-export function openAIProvider({ apiKey, model, fetchImpl = fetch }) {
-  if (!apiKey || !model) throw new RunError('AI mode requires OPENAI_API_KEY and an explicit --model or ATM_MODEL.');
-  return async ({ observation, history, signal }) => {
-    const response = await fetchImpl('https://api.openai.com/v1/responses', {
-      method: 'POST',
-      signal,
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        store: false,
-        instructions,
-        input: JSON.stringify({ goal: scenario.goal, observation, history }),
-        tools: [tool],
-        tool_choice: { type: 'function', name: 'browser_action' },
-        parallel_tool_calls: false,
-        max_output_tokens: scenario.maxOutputTokens,
-      }),
-    });
-    if (!response.ok) throw new RunError(`Model provider returned HTTP ${response.status}.`);
-    const body = await response.json();
-    if (body.status !== 'completed') throw new RunError('Model response was incomplete.');
-    const calls = body.output?.filter(item => item.type === 'function_call') ?? [];
-    if (calls.length !== 1 || calls[0].name !== 'browser_action')
-      throw new RunError('Model did not return exactly one supported action.');
-    let action;
-    try {
-      action = validateAction(JSON.parse(calls[0].arguments));
-    } catch {
-      throw new RunError('Model action failed schema validation.');
-    }
-    return { action, usage: body.usage, responseId: body.id };
-  };
-}
-
 export async function explore({
   provider,
   observe,
@@ -119,10 +85,8 @@ export async function explore({
 }
 
 export function publicProvider({ providerName, apiKey, model, fetchImpl } = {}) {
-  const config = requireModelConfig({ providerName, apiKey, model });
-  if (config.providerName === 'openai') return openAIProvider({ ...config, fetchImpl });
-  const decide = tinkerToolProvider({
-    ...config,
+  const decide = toolProvider({
+    ...requireModelConfig({ providerName, apiKey, model }),
     tool,
     instructions,
     maxOutputTokens: scenario.maxOutputTokens,

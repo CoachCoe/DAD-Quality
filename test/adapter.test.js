@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { composeDefinition, DadAdapter } from '../src/dad.js';
+import { DadAdapter } from '../src/targets/dad/index.js';
+import { composeDefinition } from '../src/targets/dad/compose.js';
 
 test('runtime isolates database and disables external integrations', () => {
   const config = composeDefinition({
@@ -70,4 +71,85 @@ test('discovery fixture authenticates donors with the dad_donor_session cookie n
   assert.equal(authenticated.length, 2);
   for (const actor of authenticated) assert.equal(actor.cookieName, 'dad_donor_session');
   assert.equal(actors.find(a => a.id === 'guest').cookieName, undefined);
+});
+
+const ID = 'atm-20260101000000-0a1b2c3d';
+
+function stubbedAdapter(mode) {
+  const run = {
+    dir: `/tmp/${ID}`,
+    data: { id: ID, options: { mode }, candidate: {} },
+    async evidence(relative, content) {
+      return { path: `evidence/${relative}`, sha256: 'x'.repeat(64), bytes: content.length };
+    },
+  };
+  const adapter = new DadAdapter(run, { repo: '/synthetic' });
+  adapter.password = 'OWNERPW';
+  const logged = [],
+    composed = [];
+  adapter.logged = async (_result, label, _binary, args, options) => {
+    logged.push({ label, args, options });
+    return { stdout: '', stderr: '' };
+  };
+  adapter.compose = (args, options) => {
+    composed.push({ args, options });
+    return Promise.resolve({ stdout: '', stderr: '' });
+  };
+  return { adapter, logged, composed };
+}
+
+test('acceptance migrates the application and integration-test databases, failing the check on migration errors', async () => {
+  const { adapter, logged } = stubbedAdapter('validation');
+  const result = { evidence: [] };
+  await adapter.database(result);
+  const start = logged.find(c => c.label === 'database-start');
+  assert.deepEqual(start.args.slice(-2), ['postgres', 'test-postgres']);
+  const migrations = logged.filter(c => c.label === 'migrations' || c.label === 'test-migrations');
+  assert.equal(migrations.length, 2);
+  for (const call of migrations) assert.equal(call.options.failureStatus, 'failed');
+  assert.ok(
+    logged
+      .find(c => c.label === 'test-migrations')
+      .args.includes('DONOR_GO_DATABASE_URL=postgresql://atm_owner:OWNERPW@test-postgres/donor_go?sslmode=disable'),
+  );
+  assert.equal(adapter.created, true, 'cleanup must remove a partially started environment');
+});
+
+test('exploration starts only the application database and still records the policy-required test-migrations evidence', async () => {
+  const { adapter, logged } = stubbedAdapter('exploration');
+  const result = { evidence: [] };
+  await adapter.database(result);
+  assert.equal(logged.find(c => c.label === 'database-start').args.at(-1), 'postgres');
+  assert.equal(
+    logged.some(c => c.label === 'test-migrations'),
+    false,
+  );
+  assert.ok(result.evidence.some(e => e.path === 'evidence/test-migrations.log'));
+});
+
+test('suite failures are product failures rather than inconclusive infrastructure', async () => {
+  const { adapter, logged } = stubbedAdapter('validation');
+  await adapter.suite({ evidence: [] }, 'api-tests');
+  assert.equal(logged[0].options.failureStatus, 'failed');
+});
+
+test('SQL runs without psqlrc and stops at the first failing statement', async () => {
+  const { adapter, composed } = stubbedAdapter('validation');
+  await adapter.sql('SELECT 1');
+  const [{ args, options }] = composed;
+  assert.ok(args.includes('-X'));
+  assert.equal(args[args.indexOf('-v') + 1], 'ON_ERROR_STOP=1');
+  assert.deepEqual(args.slice(args.indexOf('-U'), args.indexOf('-U') + 4), ['-U', 'atm_owner', '-d', 'dad_atm']);
+  assert.equal(options.input, 'SELECT 1');
+});
+
+test('cleanup removes containers and volumes even when log collection fails', async () => {
+  const { adapter, logged } = stubbedAdapter('validation');
+  adapter.created = true;
+  adapter.compose = () => Promise.reject(new Error('logs unavailable'));
+  await adapter.cleanup({ evidence: [] });
+  const down = logged.find(c => c.label === 'cleanup');
+  assert.ok(down.args.includes('down'));
+  assert.ok(down.args.includes('--volumes'));
+  assert.ok(down.args.includes('--remove-orphans'));
 });

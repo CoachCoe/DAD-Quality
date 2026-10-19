@@ -33,7 +33,6 @@ export function validateContract(checks) {
         );
       if (
         !fieldsAre(check, ['id', 'kind', 'action', 'actor', 'target', 'value']) ||
-        !actionKinds.includes(check.action) ||
         !short(check.actor, 100) ||
         !check.actor ||
         !short(check.target, 240) ||

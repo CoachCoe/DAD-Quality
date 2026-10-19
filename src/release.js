@@ -78,8 +78,10 @@ export function evaluateRelease(run, { evidenceIssues = [], findings = [], input
   };
 }
 
-export async function assessRelease(root, run, { directory = path.join(root, run.id) } = {}) {
-  const { runs, warnings } = await listRuns(root);
+// Runs, findings and finding-state problems for one history snapshot; the CLI
+// and the dashboard share this so both assess the same persisted triage.
+export async function releaseInputs(root, history) {
+  const { runs, warnings } = history ?? (await listRuns(root));
   let triage = {};
   const inputIssues = [...warnings];
   try {
@@ -98,7 +100,14 @@ export async function assessRelease(root, run, { directory = path.join(root, run
   } catch (error) {
     if (error.code !== 'ENOENT') inputIssues.push('Finding assessments are unreadable or invalid.');
   }
-  const findings = await collectFindings(root, runs, triage);
-  const evidenceIssues = await verifyEvidence(directory, run);
-  return evaluateRelease(run, { evidenceIssues, findings, inputIssues });
+  return { runs, findings: await collectFindings(root, runs, triage), inputIssues };
+}
+
+export async function assessRelease(root, run, { directory = path.join(root, run.id), inputs, evidenceIssues } = {}) {
+  const { findings, inputIssues } = inputs ?? (await releaseInputs(root));
+  return evaluateRelease(run, {
+    evidenceIssues: evidenceIssues ?? (await verifyEvidence(directory, run)),
+    findings,
+    inputIssues,
+  });
 }

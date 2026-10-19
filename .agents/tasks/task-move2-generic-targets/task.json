@@ -1,7 +1,0 @@
-{
-  "task_id": "task-move2-generic-targets",
-  "task_description": "Move 2: generalize the ATM self-discovery harness to generic targets. Introduce a minimal adapter registry and a `--target <name>` CLI flag defaulting to `dad`. Parameterize the discovery auth-cookie name, relax the policy adapter lock to accept any registered adapter, and expose the in-process benchmark app as a first-class `explore --target benchmark` target. DAD behavior must remain byte-identical end to end (same policy ids `impactgraph-discovery`/`impactgraph`, same `dad_donor_session` cookie, same adapter methods). No evidence/digest/schema validation may be weakened.",
-  "status": "completed",
-  "feature_order": ["FEAT-001", "FEAT-002"],
-  "blocked_reason": null
-}

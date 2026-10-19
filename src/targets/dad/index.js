@@ -18,9 +18,6 @@ import {
   verifyStaffSql,
 } from './sql.js';
 
-// Re-export composeDefinition for the src/dad.js compatibility shim.
-export { composeDefinition } from './compose.js';
-
 export class DadAdapter extends ProvisioningAdapter {
   constructor(run, { repo, revision = 'HEAD', sourceIdentity, signal }) {
     super(run);
@@ -30,10 +27,8 @@ export class DadAdapter extends ProvisioningAdapter {
     if (sourceIdentity && !/^github:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(sourceIdentity))
       throw new Error('Invalid GitHub source identity.');
     this.sourceIdentity = sourceIdentity;
-    this.id = run.data.id;
     this.source = path.join(run.dir, 'source');
     this.file = path.join(run.dir, 'compose.json');
-    this.created = false;
   }
   snapshot(result) {
     return super.snapshot(result, {
@@ -259,8 +254,7 @@ export class DadAdapter extends ProvisioningAdapter {
     const { stdout } = await this.sql(discoveryStateSql());
     const value = stdout.split('\n').find(line => line.startsWith('{'));
     if (!value) throw new RunError('Discovery state verifier returned no result.');
-    const raw = JSON.parse(value);
-    return raw;
+    return JSON.parse(value);
   }
   async discoveryReplayFixture() {
     if (this.run.data.options.mode !== 'exploration' || !this.created || !/^atm-[0-9]{14}-[a-f0-9]{8}$/.test(this.id))
@@ -276,19 +270,7 @@ export class DadAdapter extends ProvisioningAdapter {
       snapshot: async () =>
         (
           await this.compose(
-            [
-              'exec',
-              '-T',
-              'postgres',
-              'pg_dump',
-              '-U',
-              'atm_owner',
-              '-d',
-              'dad_atm',
-              '--clean',
-              '--if-exists',
-              '--no-owner',
-            ],
+            ['exec', '-T', 'postgres', 'pg_dump', '-U', owner, '-d', database, '--clean', '--if-exists', '--no-owner'],
             { maxBytes: 32_000_000 },
           )
         ).stdout,

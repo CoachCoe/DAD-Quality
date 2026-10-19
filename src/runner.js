@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { modelConfig } from './model-provider.js';
 import { Run, RunError } from './core.js';
-import { DadAdapter } from './dad.js';
+import { DadAdapter } from './targets/dad/index.js';
 import { staffJourney, donorClaimJourney } from './browser.js';
 import { publicAgent } from './agent.js';
 import { loadPolicy } from './policy.js';

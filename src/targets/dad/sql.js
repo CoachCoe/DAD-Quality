@@ -1,24 +1,17 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { digest } from '../../core.js';
 
-// DAD SQL builders. Every function returns a query string byte-identical to the
-// string DAD previously built inline; only generated UUIDs / hashes / passwords
-// and run-local values are parameterized. Table names, 'BEGIN READ ONLY',
-// 'explorer-a@atm.invalid', the dad_donor_session cookie, and ON_ERROR_STOP
-// reliance are all preserved verbatim.
+// Only generated UUIDs, hexadecimal hashes and passwords are interpolated; no
+// value supplied by an operator or a model reaches these statements.
 
-// Role setup run after migrations: creates the application and staff roles with
-// their generated hexadecimal passwords and grants the DAD database roles.
 export function roleSetupSql({ apiPassword, staffPassword }) {
   return `CREATE USER atm_api PASSWORD '${apiPassword}';\nGRANT dad_api TO atm_api;\nCREATE USER atm_staff PASSWORD '${staffPassword}';\nGRANT dad_staff_cli TO atm_staff;\n`;
 }
 
-// Read-only projection of persisted staff/passkey/session invariants.
 export function verifyStaffSql() {
   return `BEGIN READ ONLY;\nSELECT json_build_object('staff', (SELECT count(*) FROM donor_staff WHERE email='administrator@atm.invalid' AND role='ADMIN' AND disabled=false), 'passkeys', (SELECT count(*) FROM donor_staff_passkeys p JOIN donor_staff s ON s.id=p.staff_id WHERE s.email='administrator@atm.invalid'), 'active_sessions', (SELECT count(*) FROM donor_staff_sessions x JOIN donor_staff s ON s.id=x.staff_id WHERE s.email='administrator@atm.invalid' AND x.revoked_at IS NULL AND x.expires_at>now()), 'revoked_sessions', (SELECT count(*) FROM donor_staff_sessions x JOIN donor_staff s ON s.id=x.staff_id WHERE s.email='administrator@atm.invalid' AND x.revoked_at IS NOT NULL));\nROLLBACK;`;
 }
 
-// Donor claim-link fixture: two donors plus two login links for the first.
 export function donorFixtureSql({ donor, other, token, sibling }) {
   return `BEGIN;
 INSERT INTO donors(id,email) VALUES ('${donor}','claim@atm.invalid'),('${other}','other@atm.invalid');
@@ -28,7 +21,6 @@ INSERT INTO donor_login_links(id,donor_id,token_hash,expires_at) VALUES
 COMMIT;`;
 }
 
-// Read-only verifier for the donor-claim journey invariants.
 export function verifyDonorSql() {
   return `BEGIN READ ONLY;
 SELECT json_build_object(
@@ -42,9 +34,6 @@ SELECT json_build_object(
 ROLLBACK;`;
 }
 
-// Discovery fixture: two synthetic claimed donors with a gift and projection
-// each. Returns both the full SQL statement block and the actor descriptors so
-// the adapter stays free of SQL strings. The amount per donor is (index+1)*1700.
 export function discoveryFixture() {
   const actors = [{ id: 'guest', description: 'Anonymous visitor', entry: '/' }];
   const statements = ['BEGIN;'];
@@ -70,7 +59,6 @@ INSERT INTO donor_metric_projections(id,donor_id,net_minor,computed_at,next_refr
   return { statements: statements.join('\n'), actors };
 }
 
-// Fixed read-only projection for the fixture identities.
 export function discoveryStateSql() {
   return `BEGIN READ ONLY;
 SELECT json_object_agg(actor, state) FROM (
@@ -83,8 +71,6 @@ FROM donors d LEFT JOIN donor_preferences p ON p.donor_id=d.id WHERE d.email IN 
 ROLLBACK;`;
 }
 
-// Synthetic load fixture: 12 donors with 60 gifts each. Returns the SQL block
-// and the dad_donor_session cookie strings for performanceCheck.
 export function performanceFixture() {
   const cookies = [],
     statements = ['BEGIN;'];
@@ -104,7 +90,6 @@ INSERT INTO donor_metric_projections(id,donor_id,net_minor,computed_at,next_refr
   return { statements: statements.join('\n'), cookies };
 }
 
-// Replay restore wrapper: wraps a pg_dump payload in a transaction.
 export function replayRestoreSql(data) {
   return `BEGIN;\n${data}\nCOMMIT;`;
 }

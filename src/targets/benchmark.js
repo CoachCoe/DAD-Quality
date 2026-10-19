@@ -3,11 +3,8 @@ import path from 'node:path';
 import { digest } from '../core.js';
 import { benchmarkApplication, benchmarkContract, benchmarkSource } from '../discovery-benchmark.js';
 
-// In-process discovery target over the synthetic benchmark application. It
-// satisfies the runner's adapter contract without Docker: provisioning spins up
-// a loopback HTTP server (benchmarkApplication) and the lifecycle logs record
-// that the containerized stages do not apply. Authentication is cookie-value
-// based (test-a/test-b), so the donor actors carry an explicit cookieName.
+// Serves the healthy benchmark application in-process. The container phases only
+// record that they do not apply, so their policy-required evidence still exists.
 export class BenchmarkAdapter {
   constructor(run, { signal } = {}) {
     this.run = run;

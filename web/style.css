@@ -489,6 +489,27 @@ main {
   flex-direction: column;
   gap: 18px;
 }
+.about-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.about-grid .panel:first-child {
+  grid-column: 1 / -1;
+  background: #edf3e4;
+  border-color: #d3dec9;
+}
+.about-grid .panel:first-child p {
+  color: #526549;
+}
+.about-grid ul {
+  margin: 14px 0 0;
+  padding-left: 20px;
+  color: var(--muted);
+}
+.about-grid li {
+  margin: 8px 0;
+}
 .automation-state {
   display: flex;
   align-items: center;
@@ -1038,6 +1059,12 @@ dialog small {
   }
 }
 @media (max-width: 900px) {
+  .about-grid {
+    grid-template-columns: 1fr;
+  }
+  .about-grid .panel:first-child {
+    grid-column: auto;
+  }
   .overview-grid {
     grid-template-columns: 1fr;
   }

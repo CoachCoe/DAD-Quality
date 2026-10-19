@@ -1,9 +1,6 @@
 export const POSTGRES = 'postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea';
 export const NGINX = 'nginx:1.30.5-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94';
 
-// The nginx default.conf served by the ingress container. Kept as an exported
-// template string (byte-identical to the original inline literal) so the DAD
-// adapter can write it to the run directory during provisioning.
 export const nginxConf = `server {\n listen 8080;\n server_name _;\n location / {\n  proxy_pass http://web:3000;\n  proxy_set_header Host $http_host;\n  proxy_set_header X-Forwarded-Proto $scheme;\n  proxy_set_header X-Forwarded-For $remote_addr;\n }\n}\n`;
 
 export function composeDefinition({ id, port, password, apiPassword, staffPassword }) {
