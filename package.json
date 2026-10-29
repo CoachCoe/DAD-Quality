@@ -12,6 +12,7 @@
     "atm": "node --env-file-if-exists=.atm/agent.env src/cli.js",
     "explore": "node --env-file-if-exists=.atm/agent.env src/cli.js explore",
     "github-ci": "node scripts/github-ci.js",
+    "aws:sync": "node scripts/aws-sync-run.js",
     "test": "node --test test/*.test.js",
     "test:browser": "node --test test/*.browser.js",
     "test:fixture": "node --test test/fixture.postgres.js",
@@ -24,6 +25,9 @@
     "model:check": "node --env-file-if-exists=.atm/agent.env scripts/check-model.js"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "3.1159.0",
+    "@aws-sdk/client-s3": "3.1159.0",
+    "@aws-sdk/lib-dynamodb": "3.1159.0",
     "playwright": "1.64.1"
   },
   "devDependencies": {
