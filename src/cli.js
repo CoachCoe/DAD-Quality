@@ -18,7 +18,8 @@ const help = `ATM — local application quality runner
 
 Options:
   --output DIR      Evidence root (default .atm/runs)
-  --target NAME     Discovery target: dad (default) or benchmark (explore only; in-process, no --repo)
+  --target NAME     Discovery target: dad (default), generic-web (any app via atm.config.json), or benchmark (explore only; in-process, no --repo)
+  --config FILE     Repo-relative atm.config.json path for --target generic-web (default atm.config.json)
   --policy FILE     Versioned local acceptance policy (default policies/impactgraph-local.json)
   --ai              Add advisory AI exploration; requires provider key and --model/ATM_MODEL
   --provider NAME   openai (default) or tinker; also ATM_PROVIDER
@@ -50,6 +51,7 @@ export async function main(args = process.argv.slice(2)) {
       provider: { type: 'string' },
       'max-requests': { type: 'string' },
       target: { type: 'string', default: 'dad' },
+      config: { type: 'string' },
       help: { type: 'boolean', default: false },
     },
   });
@@ -94,13 +96,15 @@ export async function main(args = process.argv.slice(2)) {
   resolveTarget(values.target);
   if (!discovery && values.target !== 'dad')
     throw new Error('run targets DAD only; use explore --target for alternative discovery targets.');
-  // Non-dad targets (e.g. benchmark) provision in-process and need no --repo;
-  // run and explore --target dad still require a source repository.
-  if (!values.repo && values.target === 'dad')
-    throw new Error('Use: npm run atm -- run|explore --repo /path/to/DAD-Main');
+  // Only the in-process benchmark target provisions without a repository; dad and
+  // generic-web explore a committed source checkout and require --repo.
+  if (!values.repo && values.target !== 'benchmark')
+    throw new Error('Use: npm run atm -- run|explore --repo /path/to/repo (only --target benchmark needs no repo).');
   if (discovery && (values.ai || values['require-ai'] || values.policy))
     throw new Error('Explore uses its own discovery contract; omit --ai, --require-ai and --policy.');
   if (!discovery && values['max-requests'] !== undefined) throw new Error('--max-requests applies only to explore.');
+  if (values.config !== undefined && values.target !== 'generic-web')
+    throw new Error('--config applies only to --target generic-web.');
   const ai = values.ai || values['require-ai'];
   const model = values.model ?? process.env.ATM_MODEL;
   const controller = new AbortController();
@@ -125,6 +129,7 @@ export async function main(args = process.argv.slice(2)) {
       providerName: values.provider,
       maxRequests: values['max-requests'] === undefined ? undefined : Number(values['max-requests']),
       target: values.target,
+      ...(discovery ? { configFile: values.config } : {}),
       signal: controller.signal,
     });
   } finally {

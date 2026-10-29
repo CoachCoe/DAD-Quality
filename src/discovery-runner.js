@@ -43,7 +43,7 @@ export function discoveryPolicy(target = 'dad') {
 /**
  * @param {{repo?: string, revision?: string, output?: string, model?: string, signal?: AbortSignal, trigger?: string,
  *   onCreated?: (run: Run) => void, provider?: Function, providerName?: string, maxRequests?: number, target?: string,
- *   adapterFactory?: (run: Run, options: object) => any, browserFactory?: Function}} options
+ *   configFile?: string, adapterFactory?: (run: Run, options: object) => any, browserFactory?: Function}} options
  */
 export async function executeDiscovery({
   repo,
@@ -57,6 +57,7 @@ export async function executeDiscovery({
   providerName,
   maxRequests = discoveryLimits.requests,
   target = 'dad',
+  configFile,
   adapterFactory,
   browserFactory = openDiscoveryBrowser,
 }) {
@@ -85,7 +86,7 @@ export async function executeDiscovery({
   );
   onCreated(run);
   console.log(`Exploration evidence: ${run.dir}`);
-  const adapter = adapterFactory(run, { repo, revision, signal });
+  const adapter = adapterFactory(run, { repo, revision, signal, configFile });
   const step = async (id, action) => {
     const check = policy.definition.checks.find(c => c.id === id);
     const deadline = AbortSignal.timeout(check.timeoutMs);
