@@ -135,9 +135,11 @@ function validateActors(actors) {
         typeof actor.cookie === 'string' && actor.cookie.length >= 1 && actor.cookie.length <= 4096,
         `atm.config.json: actor "${actor.id}" cookie must be a non-empty string.`,
       );
+      // A generic app's session cookie name is not knowable; require it explicitly
+      // rather than falling back to any target-specific default.
       assert(
-        actor.cookieName === undefined || (typeof actor.cookieName === 'string' && COOKIE_NAME.test(actor.cookieName)),
-        `atm.config.json: actor "${actor.id}" cookieName is invalid.`,
+        typeof actor.cookieName === 'string' && COOKIE_NAME.test(actor.cookieName),
+        `atm.config.json: actor "${actor.id}" with a cookie must declare its cookieName (the app's session cookie).`,
       );
     }
   }

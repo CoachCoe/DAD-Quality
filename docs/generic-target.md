@@ -106,9 +106,9 @@ that serves the application on a loopback port passed as `PORT`.
 - Command mode: `start` (required argv array), `build` (optional argv array),
   `workingDir` (optional repo-relative directory the commands run in).
 - `actors` — 1–8 declared actors. At least one must be anonymous (no `cookie`).
-  A cookie-backed actor supplies a synthetic session `cookie` and optional
-  `cookieName` (default `dad_donor_session`). The harness never fabricates
-  credentials; you declare them.
+  A cookie-backed actor supplies a synthetic session `cookie` and the `cookieName`
+  of the application's own session cookie (required — the harness applies no
+  target-specific default). The harness never fabricates credentials; you declare them.
 - `seed` — optional argv array run once before discovery to establish fixture
   state (in compose mode it runs via `docker compose run` against the service).
 
