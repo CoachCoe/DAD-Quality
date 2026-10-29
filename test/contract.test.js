@@ -339,3 +339,28 @@ test('repeated attempts to replace an unfinished plan also stop without discardi
   assert.equal(report.investigations.length, 1);
   assert.equal(report.investigations[0].conclusion, undefined);
 });
+
+// Phase 5a: accessibility is a first-class discovery expectation.
+test('a11y_clean passes with no violations, fails with violations, and is inconclusive without an audit', () => {
+  const check = action('assert', { expectation: 'a11y_clean' });
+  // No violations captured -> passes.
+  assert.equal(evaluateExpectation(check, observation({ a11y: [] })).passed, true);
+  // Violations captured -> fails, with the count as actual evidence.
+  const failed = evaluateExpectation(
+    check,
+    observation({ a11y: [{ rule: 'color-contrast', impact: 'serious', help: 'x', targets: ['.btn'] }] }),
+  );
+  assert.equal(failed.evaluable, true);
+  assert.equal(failed.passed, false);
+  assert.equal(failed.actual, 1);
+  // Audit did not run (a11y undefined) -> inconclusive, never a failure.
+  assert.equal(evaluateExpectation(check, observation()).evaluable, false);
+});
+
+test('a contract may declare an a11y_clean assertion with empty target/value/text/baseline', () => {
+  const checks = [
+    requiredAction('reload'),
+    requiredAssertion('a11y', { expectation: 'a11y_clean', target: '', value: '', text: '', baseline: '' }),
+  ];
+  assert.doesNotThrow(() => validateContract(checks));
+});

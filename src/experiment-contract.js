@@ -5,6 +5,7 @@ export const literalExpectations = [
   'text_absent',
   'no_server_error',
   'no_page_error',
+  'a11y_clean',
   'field_value',
   'field_checked',
   'path_equals',
