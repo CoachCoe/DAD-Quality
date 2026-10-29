@@ -114,6 +114,12 @@ test('a cookieName without a cookie is rejected', () => {
   assert.throws(() => validateGenericConfig(c), /cookieName but no cookie/);
 });
 
+test('a cookie-backed actor must declare its cookieName (no target-specific default leaks in)', () => {
+  const c = composeConfig();
+  c.actors.push({ id: 'member', description: 'Signed-in member', entry: '/app', cookie: 'synthetic-session' });
+  assert.throws(() => validateGenericConfig(c), /must declare its cookieName/);
+});
+
 test('an actor entry must be loopback-relative', () => {
   const c = composeConfig();
   c.actors[0].entry = 'https://evil.example/';
