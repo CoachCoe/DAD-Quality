@@ -1,0 +1,66 @@
+# CodeBuild buildspec for the ATM runner (DAD-infra apps/atm RunnerStack).
+#
+# The RunnerStack injects these environment variables into the build:
+#   ATM_ENV             staging | production
+#   ATM_EVIDENCE_BUCKET atm-evidence-<env>-<account>
+#   ATM_FINDINGS_TABLE  atm-findings-<env>
+#   GITHUB_APP_TOKEN    short-lived GitHub App installation token (per-build)
+# DAD-Main CI passes the revision to validate via StartBuild --source-version,
+# which CodeBuild exposes as CODEBUILD_RESOLVED_SOURCE_VERSION.
+#
+# Flow (design §6.2 / §6.5): clone DAD-Main @ SHA -> run ATM -> capture ATM's
+# exit code -> post-run sync (evidence -> S3, findings -> DynamoDB) -> exit with
+# ATM's code so CodeBuild and the calling CI gate on ATM's contract
+# (0/1/2/3/130). The sync must NOT change ATM's exit code.
+version: 0.2
+
+env:
+  variables:
+    ATM_OUTPUT: .atm/ci
+  shell: bash
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 22
+    commands:
+      - node --version
+      - npm ci --omit=dev || npm ci
+      # Playwright Chromium is required for browser-driven checks.
+      - npx --yes playwright install --with-deps chromium
+
+  pre_build:
+    commands:
+      # Revision under validation: prefer the StartBuild --source-version SHA.
+      - export SOURCE_SHA="${SOURCE_VERSION:-$CODEBUILD_RESOLVED_SOURCE_VERSION}"
+      - 'echo "Validating DAD-Main @ ${SOURCE_SHA} (env=${ATM_ENV})"'
+      # Clone DAD-Main at the pinned SHA using the injected short-lived token.
+      # ATM re-resolves and archives only committed source from this checkout.
+      - rm -rf dad-main-src
+      - git clone "https://x-access-token:${GITHUB_APP_TOKEN}@github.com/CoachCoe/DAD-Main.git" dad-main-src
+      - git -C dad-main-src checkout "$SOURCE_SHA"
+
+  build:
+    commands:
+      # Run ATM against the checkout; capture its exit code without aborting the
+      # build so the post-run sync still uploads evidence for a blocked run.
+      - set +e
+      - npm run atm -- run --repo "$PWD/dad-main-src" --revision "$SOURCE_SHA" --output "$ATM_OUTPUT"
+      - export ATM_EXIT=$?
+      - set -e
+      - 'echo "ATM exited ${ATM_EXIT}"'
+
+  post_build:
+    commands:
+      # Mirror the finished run to S3 + DynamoDB. The run directory ATM writes is
+      # under $ATM_OUTPUT/runs; sync reads it read-only.
+      - export ATM_RUN_ROOT="$PWD/$ATM_OUTPUT/runs"
+      - export ATM_RUN_ID="$(ls -1t "$ATM_RUN_ROOT" | head -n1)"
+      - npm run aws:sync -- --run-root "$ATM_RUN_ROOT" --run-id "$ATM_RUN_ID"
+      # Gate on ATM's contract: exit with the code ATM produced, not the sync's.
+      - exit "${ATM_EXIT:-2}"
+
+artifacts:
+  files:
+    - .atm/ci/runs/**/*
+  name: atm-$ATM_ENV
