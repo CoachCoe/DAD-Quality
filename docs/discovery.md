@@ -34,11 +34,23 @@ To try discovery without Docker or a DAD checkout, `npm run explore -- --target 
 runs the healthy synthetic profile application from the quality benchmark in-process.
 It needs the same model configuration and records its own `benchmark-discovery` policy.
 
-To use **Explore application** in the dashboard with that file:
+To explore **any** web application, point ATM at its repository with
+`npm run explore -- --repo /path/to/repo --target generic-web`. The target repository
+supplies an `atm.config.json` describing how to build, start, and reach it (and which
+actors to explore as); see [the generic target guide](./generic-target.md). The
+discovery engine, contracts, and evidence model are identical to the DAD path — only
+provisioning is config-driven. Release validation (`run`) remains DAD-only, since only
+DAD ships an acceptance policy.
+
+To use **Explore application** in the dashboard:
 
 ```sh
-npm start -- --repo /path/to/DAD-Main
+npm start -- --repo /path/to/DAD-Main                    # DAD target (default)
+npm start -- --repo /path/to/repo --target generic-web   # any web app via atm.config.json
 ```
+
+The dashboard requires `--repo` (there is no longer a built-in default). A non-DAD
+target offers exploration only; the dashboard labels its profile with the target name.
 
 Fixture initialization and replay restart the ingress together with the application
 services and wait for its healthcheck, so nginx resolves the current container

@@ -11,14 +11,18 @@ import { resolveTarget } from './targets/index.js';
 
 const help = `ATM — local application quality runner
 
-  npm run atm -- run --repo /path/to/DAD-Main [--revision HEAD] [--ai --model MODEL]
-  npm run atm -- explore --repo /path/to/DAD-Main --model MODEL
+  npm run atm -- run --repo /path/to/repo [--revision HEAD] [--ai --model MODEL]
+  npm run atm -- explore --repo /path/to/repo --target generic-web --model MODEL
   npm run atm -- inspect /path/to/run/run.json
-  npm start -- --repo /path/to/DAD-Main
+  npm start -- --repo /path/to/repo --target generic-web
 
 Options:
+  --target NAME     Discovery/validation target (default dad):
+                      dad          DAD-Main validation + discovery (built-in knowledge)
+                      generic-web  any web app via a repo-supplied atm.config.json (explore only)
+                      benchmark    in-process sample app (explore only; no --repo)
+  --repo PATH       Path to the target repository (required except --target benchmark)
   --output DIR      Evidence root (default .atm/runs)
-  --target NAME     Discovery target: dad (default), generic-web (any app via atm.config.json), or benchmark (explore only; in-process, no --repo)
   --config FILE     Repo-relative atm.config.json path for --target generic-web (default atm.config.json)
   --policy FILE     Versioned local acceptance policy (default policies/impactgraph-local.json)
   --ai              Add advisory AI exploration; requires provider key and --model/ATM_MODEL
@@ -90,12 +94,14 @@ export async function main(args = process.argv.slice(2)) {
         : exitCode(decision, release);
   }
   if (!['run', 'explore'].includes(positionals[0]) || positionals.length !== 1)
-    throw new Error('Use: npm run atm -- run|explore --repo /path/to/DAD-Main');
+    throw new Error('Use: npm run atm -- run|explore --repo /path/to/repo [--target NAME]');
   const discovery = positionals[0] === 'explore';
   // Validate the target early so an unknown name errors before provisioning.
   resolveTarget(values.target);
   if (!discovery && values.target !== 'dad')
-    throw new Error('run targets DAD only; use explore --target for alternative discovery targets.');
+    throw new Error(
+      'run (release validation) is available only for --target dad, which ships the acceptance policy; use explore --target for other codebases.',
+    );
   // Only the in-process benchmark target provisions without a repository; dad and
   // generic-web explore a committed source checkout and require --repo.
   if (!values.repo && values.target !== 'benchmark')

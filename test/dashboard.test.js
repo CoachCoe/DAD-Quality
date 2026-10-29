@@ -243,3 +243,52 @@ test('commit watch baselines current revision, runs only new commits and survive
   await dashboard.tick();
   assert.equal(executions, 1);
 });
+
+// Phase 2: the dashboard is target-aware. A non-dad target explores only, labels its
+// own profile, and threads target + configFile into the explorer.
+test('a generic-web dashboard labels its profile, refuses validation, and threads target into explore', async t => {
+  const root = await directory(t);
+  let seen = null;
+  const dashboard = new Dashboard({
+    repo: '/synthetic/some-app',
+    root,
+    target: 'generic-web',
+    configFile: 'custom.config.json',
+    model: 'test-model',
+    resolve: async () => SHA,
+    explorer: async options => {
+      seen = options;
+      const run = await Run.create(root, { mode: 'exploration' }, ['discovery']);
+      options.onCreated(run);
+      await run.step('discovery', async () => ({}));
+      await run.finish();
+    },
+  });
+  await dashboard.initialize();
+  t.after(() => dashboard.close());
+
+  const snapshot = await dashboard.snapshot();
+  assert.equal(snapshot.project.target, 'generic-web');
+  assert.equal(snapshot.project.profile, 'generic-web · discovery');
+
+  await assert.rejects(
+    dashboard.start({ mode: 'validation' }),
+    /Release validation is available only for the dad target/,
+  );
+
+  // Exploration requires a configured model; provide a dummy key for this assertion.
+  const priorKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = 'test-key';
+  t.after(() => {
+    if (priorKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = priorKey;
+  });
+  await dashboard.start({ mode: 'exploration' });
+  await dashboard.active?.completion;
+  assert.equal(seen.target, 'generic-web');
+  assert.equal(seen.configFile, 'custom.config.json');
+});
+
+test('an unknown dashboard target is rejected at construction', () => {
+  assert.throws(() => new Dashboard({ repo: '/synthetic/x', target: 'nope' }), /Unknown target: nope/);
+});
