@@ -3,6 +3,19 @@
   "version": "0.3.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "atm": "src/cli.js"
+  },
+  "files": [
+    "src/",
+    "web/",
+    "policies/",
+    "docs/aws-runner.md",
+    "docs/discovery.md",
+    "docs/generic-target.md",
+    "docs/github-gate.md",
+    "docs/performance.md"
+  ],
   "description": "Local release validation and bounded AI exploration for web applications",
   "engines": {
     "node": ">=22"
