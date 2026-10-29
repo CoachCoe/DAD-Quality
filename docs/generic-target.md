@@ -22,6 +22,27 @@ as not-applicable with their required evidence still present.
 Place `atm.config.json` at the repository root (or pass `--config <repo-relative
 path>`). Two provisioning modes are supported.
 
+## Generate a starter config (`detect`)
+
+You do not have to write `atm.config.json` by hand. `detect` inspects a
+repository's real build/run artifacts — a Docker Compose file, `package.json`,
+`manage.py`, a `Procfile`, `config.ru` — and derives a validated starter config:
+
+```sh
+npm run atm -- detect --repo /path/to/your-app            # writes atm.config.json
+npm run atm -- detect --repo /path/to/your-app --print    # preview, writes nothing
+npm run atm -- detect --repo /path/to/your-app --force     # overwrite an existing file
+```
+
+Detection is deterministic and uses no model: it reads the repository's own files
+and derives the `provision` block from them (Keel's principle — derive from the
+real artifact, don't trust a declaration). The output always passes the schema
+validator, or `detect` fails with a message naming the signals it looked for
+rather than writing a half-config. It emits exactly one anonymous `visitor`
+actor; you add authenticated actors and an optional `seed` command by hand, since
+a machine cannot derive a real session. Review the generated file before running
+`explore`.
+
 ### Compose mode
 
 The adapter brings up a Docker Compose file the repository provides and maps the

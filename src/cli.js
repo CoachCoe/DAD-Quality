@@ -2,17 +2,19 @@
 import { parseArgs } from 'node:util';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { evaluate, redact, verifyEvidence } from './core.js';
 import { executeRun } from './runner.js';
 import { executeDiscovery } from './discovery-runner.js';
 import { assessRelease } from './release.js';
 import { resolveTarget } from './targets/index.js';
+import { detectConfig } from './detect.js';
 
 const help = `ATM — local application quality runner
 
   npm run atm -- run --repo /path/to/repo [--revision HEAD] [--ai --model MODEL]
   npm run atm -- explore --repo /path/to/repo --target generic-web --model MODEL
+  npm run atm -- detect --repo /path/to/repo [--config FILE] [--force] [--print]
   npm run atm -- inspect /path/to/run/run.json
   npm start -- --repo /path/to/repo --target generic-web
 
@@ -24,6 +26,8 @@ Options:
   --repo PATH       Path to the target repository (required except --target benchmark)
   --output DIR      Evidence root (default .atm/runs)
   --config FILE     Repo-relative atm.config.json path for --target generic-web (default atm.config.json)
+  --force           detect: overwrite an existing config file
+  --print           detect: print the generated config to stdout, write nothing
   --policy FILE     Versioned local acceptance policy (default policies/impactgraph-local.json)
   --ai              Add advisory AI exploration; requires provider key and --model/ATM_MODEL
   --provider NAME   openai (default) or tinker; also ATM_PROVIDER
@@ -56,6 +60,8 @@ export async function main(args = process.argv.slice(2)) {
       'max-requests': { type: 'string' },
       target: { type: 'string', default: 'dad' },
       config: { type: 'string' },
+      force: { type: 'boolean', default: false },
+      print: { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
     },
   });
@@ -92,6 +98,28 @@ export async function main(args = process.argv.slice(2)) {
       : run.options?.mode === 'exploration'
         ? explorationExit(decision)
         : exitCode(decision, release);
+  }
+  if (positionals[0] === 'detect' && positionals.length === 1) {
+    if (!values.repo)
+      throw new Error('Use: npm run atm -- detect --repo /path/to/repo [--config FILE] [--force] [--print]');
+    const config = await detectConfig(values.repo);
+    const json = `${JSON.stringify(config, null, 2)}\n`;
+    if (values.print) {
+      console.log(json.trimEnd());
+      return 0;
+    }
+    const target = path.resolve(values.repo, values.config ?? 'atm.config.json');
+    try {
+      await writeFile(target, json, { flag: values.force ? 'w' : 'wx', mode: 0o600 });
+    } catch (error) {
+      if (error.code === 'EEXIST')
+        throw new Error(`${target} already exists; pass --force to overwrite or --print to preview.`);
+      throw error;
+    }
+    console.log(
+      `Wrote ${target}\nReview it, add authenticated actors + an optional seed command, then:\n  npm run atm -- explore --repo ${values.repo} --target generic-web`,
+    );
+    return 0;
   }
   if (!['run', 'explore'].includes(positionals[0]) || positionals.length !== 1)
     throw new Error('Use: npm run atm -- run|explore --repo /path/to/repo [--target NAME]');
