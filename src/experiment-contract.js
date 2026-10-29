@@ -1,4 +1,4 @@
-const actionKinds = ['click', 'fill', 'select', 'check', 'navigate', 'reload', 'switch_actor'];
+const actionKinds = ['click', 'fill', 'select', 'check', 'navigate', 'reload', 'switch_actor', 'probe'];
 export const relationshipExpectations = ['state_unchanged', 'state_delta', 'field_unchanged', 'checkbox_unchanged'];
 export const literalExpectations = [
   'text_present',
@@ -6,6 +6,8 @@ export const literalExpectations = [
   'no_server_error',
   'no_page_error',
   'a11y_clean',
+  'response_status',
+  'json_has',
   'field_value',
   'field_checked',
   'path_equals',
@@ -40,7 +42,10 @@ export function validateContract(checks) {
         !short(check.value, 500)
       )
         throw new Error('Invalid action contract.');
-      if (['click', 'fill', 'select', 'check', 'navigate', 'switch_actor'].includes(check.action) && !check.target)
+      if (
+        ['click', 'fill', 'select', 'check', 'navigate', 'switch_actor', 'probe'].includes(check.action) &&
+        !check.target
+      )
         throw new Error('Action contract needs an observed label, path or actor.');
       if (check.action === 'check' && !['true', 'false'].includes(check.value))
         throw new Error('Checkbox action requires true or false.');
@@ -75,6 +80,10 @@ export function validateContract(checks) {
         throw new Error('Field checks need an observed label.');
       if (['text_present', 'text_absent', 'path_equals'].includes(check.expectation) && !check.text.trim())
         throw new Error('Text/path checks need an expected value.');
+      if (check.expectation === 'response_status' && !/^[1-5][0-9]{2}$/.test(check.text))
+        throw new Error('response_status needs an expected HTTP status code (e.g. "200").');
+      if (check.expectation === 'json_has' && !check.target.trim())
+        throw new Error('json_has needs a target JSON key path (e.g. "data.id").');
       if (check.expectation === 'field_checked' && !['true', 'false'].includes(check.text))
         throw new Error('Checkbox expectation requires true or false.');
       if (check.expectation === 'state_delta' && !/^-?(?:0|[1-9][0-9]*)$/.test(check.text))
@@ -106,6 +115,7 @@ export function actionMatches(check, action, observation) {
     target = control.label;
   } else if (action.action === 'navigate') target = observation.pages?.find(p => p.id === action.target)?.path;
   else if (action.action === 'switch_actor') target = action.target;
+  else if (action.action === 'probe') target = action.target;
   return check.target === target;
 }
 
