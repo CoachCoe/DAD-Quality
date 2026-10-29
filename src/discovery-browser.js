@@ -2,6 +2,7 @@ import path from 'node:path';
 import { openBrowser } from './browser.js';
 import { discoveryLimits, evaluateExpectation } from './discovery.js';
 import { redact } from './core.js';
+import { auditAccessibility } from './accessibility.js';
 
 const clean = value => redact(String(value)).slice(0, 12_000);
 // Evaluated in the page for both observation and execution. Inputs often have
@@ -19,7 +20,15 @@ const controlIdentity = el =>
     [...(el.labels ?? [])].map(label => label.textContent?.trim()),
     el.textContent?.trim().slice(0, 120),
   ]);
-export async function openDiscoveryBrowser({ origin, actors, signal, run, result, fixture }) {
+export async function openDiscoveryBrowser({
+  origin,
+  actors,
+  signal,
+  run,
+  result,
+  fixture,
+  audit = auditAccessibility,
+}) {
   const permitted = new URL(origin);
   if (
     permitted.protocol !== 'http:' ||
@@ -280,6 +289,11 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
       observation.controls = visible;
       observation.actors = actors.map(({ id, description }) => ({ id, description }));
       observation.pages = this.pages();
+      // Capture an accessibility audit so the agent can assert a11y_clean. Best
+      // effort: a null result (audit unavailable) leaves a11y undefined, which
+      // the evaluator treats as inconclusive rather than a failure.
+      const violations = await audit(page).catch(() => null);
+      if (violations) observation.a11y = violations;
       lastObservation = structuredClone(observation);
       return observation;
     },
