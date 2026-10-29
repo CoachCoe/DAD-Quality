@@ -1,14 +1,30 @@
 # ATM — application quality runner
 
-ATM is a local quality workspace for DAD. Launch isolated acceptance runs, compare candidates, inspect evidence, and triage recurring failures through a browser dashboard or CLI.
+ATM is a local quality workspace for web applications. Launch isolated acceptance runs, compare candidates, inspect evidence, and triage recurring failures through a browser dashboard or CLI. It ships with built-in knowledge of the DAD application and runs against **any web app** through a small repo-supplied config.
 
 **Autonomous discovery:** use **Explore application** in the dashboard or
-`npm run explore -- --repo /path/to/DAD-Main --revision origin/dev`. The agent
+`npm run explore -- --repo /path/to/repo --target generic-web`. The agent
 reads the pinned source and documentation, discovers capabilities in the browser,
 and chooses experiments with executable contracts and checkpoint comparisons without a predefined goal or test sequence. It records hypotheses, attempts independent reproduction,
 and retrieves earlier feature evidence with source-change tracking. This mode skips predefined test suites.
 See [discovery setup, evidence, and limits](docs/discovery.md); a configured model
 and API key are required. Discovery is separate from release acceptance.
+
+## Use with any web app
+
+ATM is not DAD-specific. Point it at any repository and let it generate a starter config:
+
+```sh
+npm run atm -- detect --repo /path/to/your-app   # writes atm.config.json
+npm run atm -- explore --repo /path/to/your-app --target generic-web --model YOUR_MODEL
+```
+
+`detect` inspects the repo's real build/run artifacts (Docker Compose, package.json,
+Django/Procfile/Rails) and derives a validated `atm.config.json`; you review it, add any
+authenticated actors, and explore. See [the generic target guide](docs/generic-target.md).
+The `dad` target keeps its built-in provisioning and the release-validation `run` command;
+other targets use discovery. Installed as a package, the CLI is available as `atm`
+(e.g. `npx atm detect --repo .`).
 
 ## Open the workspace
 
