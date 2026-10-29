@@ -44,8 +44,11 @@ phases:
     commands:
       # Run ATM against the checkout; capture its exit code without aborting the
       # build so the post-run sync still uploads evidence for a blocked run.
+      # ATM treats --output as the run root directly (Run.create resolves
+      # <output>/<run-id>/), so point it at $ATM_OUTPUT/runs to match the
+      # ATM_RUN_ROOT the post_build step reads and the artifacts glob below.
       - set +e
-      - npm run atm -- run --repo "$PWD/dad-main-src" --revision "$SOURCE_SHA" --output "$ATM_OUTPUT"
+      - npm run atm -- run --repo "$PWD/dad-main-src" --revision "$SOURCE_SHA" --output "$ATM_OUTPUT/runs"
       - export ATM_EXIT=$?
       - set -e
       - 'echo "ATM exited ${ATM_EXIT}"'
