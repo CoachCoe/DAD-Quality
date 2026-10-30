@@ -1,5 +1,11 @@
 # AWS runner — post-run sync
 
+> **Held: not deployed.** DAD-Main's ATM gate (`atm.yml`) and its Worker ledger are the
+> single source of truth for findings, and that ledger accepts only receipts bound to a
+> GitHub Actions run, which a CodeBuild run cannot produce. The runner and this sync stay
+> built and tested for a future need GitHub-hosted runs cannot meet; until then nothing
+> starts it. See DAD-Docs ADR 0006.
+
 ATM runs on AWS CodeBuild (DAD-infra `apps/atm`) as an ephemeral, batch-style
 acceptance runner. The CodeBuild host runs ATM unchanged against a pinned
 DAD-Main revision, then a post-run step mirrors the finished run to durable
@@ -14,8 +20,9 @@ cloud backend inside ATM is a later increment.
 ## Pieces
 
 - `buildspec.atm.yml` — the CodeBuild buildspec. Clones DAD-Main at the
-  dispatched SHA, runs `npm run atm -- run`, captures ATM's exit code, runs the
-  sync, then exits with ATM's code so CodeBuild and the calling CI gate on ATM's
+  revision passed to `StartBuild` (else the default branch), runs `npm run atm -- run`,
+  captures ATM's exit code, runs the sync, then exits with ATM's code so CodeBuild and
+  any caller gate on ATM's
   contract (`0`/`1`/`2`/`3`/`130`). The sync never changes that exit code.
 - `scripts/aws-sync-run.js` — the sync (`npm run aws:sync`). Uploads evidence to
   S3 and reconciles findings into DynamoDB with conditional writes.
@@ -27,7 +34,7 @@ cloud backend inside ATM is a later increment.
 | `ATM_EVIDENCE_BUCKET` | RunnerStack | S3 bucket, `atm-evidence-<env>-<account>`. |
 | `ATM_FINDINGS_TABLE` | RunnerStack | DynamoDB table, `atm-findings-<env>`. |
 | `ATM_ENV` | RunnerStack | `staging` or `production` (informational). |
-| `GITHUB_APP_TOKEN` | DAD-Main CI via StartBuild | Short-lived token the clone uses. |
+| `GITHUB_APP_TOKEN` | optional, per `StartBuild` call | Token for the clone; empty clones anonymously (DAD-Main is public). |
 | `SOURCE_VERSION` / `CODEBUILD_RESOLVED_SOURCE_VERSION` | StartBuild | Revision to validate. |
 | `ATM_RUN_ROOT` / `ATM_RUN_ID` | buildspec | Run directory to sync (or pass `--run-root` / `--run-id`). |
 | `ATM_SYNC_DRY_RUN` | operator | `1` prints the plan and makes no AWS calls. |
