@@ -13,6 +13,7 @@ import { listRuns, readRun, summarize, compareRuns, collectFindings } from './hi
 import { performanceDetail } from './performance.js';
 import { assessRelease, releaseInputs } from './release.js';
 import { loadPolicy } from './policy.js';
+import { resolveTarget } from './targets/index.js';
 
 const assets = fileURLToPath(new URL('../web/', import.meta.url));
 const MAX_BODY = 16_384;
@@ -68,7 +69,13 @@ export class Dashboard {
     model = process.env.ATM_MODEL,
     providerName = process.env.ATM_PROVIDER ?? 'openai',
     policy,
+    target = 'dad',
+    configFile,
   }) {
+    // Validate the target name up front so an unknown target fails at construction.
+    resolveTarget(target);
+    this.target = target;
+    this.configFile = configFile;
     this.repo = path.resolve(repo);
     this.root = path.resolve(root);
     this.model = model;
@@ -165,7 +172,8 @@ export class Dashboard {
       project: {
         name: path.basename(this.repo),
         repo: this.repo,
-        profile: 'DAD · local acceptance',
+        target: this.target,
+        profile: this.target === 'dad' ? 'DAD · local acceptance' : `${this.target} · discovery`,
         policy: { id: this.policy.definition.id, version: this.policy.definition.version, digest: this.policy.digest },
         aiConfigured: modelConfig({ providerName: this.providerName, model: this.model }).configured,
         provider: this.providerName,
@@ -188,6 +196,11 @@ export class Dashboard {
       throw new HttpError(409, 'A validation is already active. Wait for cleanup before starting another.');
     if (typeof ai !== 'boolean' || typeof requireAI !== 'boolean') throw new HttpError(400, 'Invalid AI options.');
     if (!['validation', 'exploration'].includes(mode)) throw new HttpError(400, 'Invalid run mode.');
+    if (mode === 'validation' && this.target !== 'dad')
+      throw new HttpError(
+        400,
+        'Release validation is available only for the dad target; use exploration for this codebase.',
+      );
     if (mode === 'exploration' && (ai || requireAI))
       throw new HttpError(400, 'Discovery does not use predefined AI journeys.');
     if (
@@ -223,6 +236,7 @@ export class Dashboard {
             providerName: this.providerName,
             trigger,
             signal: controller.signal,
+            ...(mode === 'exploration' ? { target: this.target, configFile: this.configFile } : {}),
             onCreated: run => {
               active.id = run.data.id;
               created();

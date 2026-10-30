@@ -2,6 +2,7 @@ import path from 'node:path';
 import { openBrowser } from './browser.js';
 import { discoveryLimits, evaluateExpectation } from './discovery.js';
 import { redact } from './core.js';
+import { auditAccessibility } from './accessibility.js';
 
 const clean = value => redact(String(value)).slice(0, 12_000);
 // Evaluated in the page for both observation and execution. Inputs often have
@@ -19,7 +20,15 @@ const controlIdentity = el =>
     [...(el.labels ?? [])].map(label => label.textContent?.trim()),
     el.textContent?.trim().slice(0, 120),
   ]);
-export async function openDiscoveryBrowser({ origin, actors, signal, run, result, fixture }) {
+export async function openDiscoveryBrowser({
+  origin,
+  actors,
+  signal,
+  run,
+  result,
+  fixture,
+  audit = auditAccessibility,
+}) {
   const permitted = new URL(origin);
   if (
     permitted.protocol !== 'http:' ||
@@ -43,7 +52,8 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
     trail = [],
     dirty = false,
     sequence = 0,
-    lastObservation;
+    lastObservation,
+    lastProbe;
   let serverErrors = [],
     pageErrors = [];
   const relative = raw => {
@@ -202,6 +212,20 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
       await target.reload({ timeout: 10000 });
       return;
     }
+    if (spec.action === 'probe') {
+      let status = 0;
+      let json;
+      const response = await target.request.get(spec.url, { timeout: 10000, failOnStatusCode: false });
+      status = response.status();
+      const body = (await response.text()).slice(0, 20_000);
+      try {
+        json = JSON.parse(body);
+      } catch {
+        json = undefined;
+      }
+      lastProbe = { status, json: json === undefined ? undefined : JSON.parse(clean(JSON.stringify(json))) };
+      return;
+    }
     const locator = target.locator(spec.selector);
     if ((await locator.count()) !== 1 || !(await locator.isVisible()))
       throw new Error('Observed control is no longer uniquely visible. Observe again.');
@@ -280,6 +304,17 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
       observation.controls = visible;
       observation.actors = actors.map(({ id, description }) => ({ id, description }));
       observation.pages = this.pages();
+      // Capture an accessibility audit so the agent can assert a11y_clean. Best
+      // effort: a null result (audit unavailable) leaves a11y undefined, which
+      // the evaluator treats as inconclusive rather than a failure.
+      const violations = await audit(page).catch(() => null);
+      if (violations) observation.a11y = violations;
+      // Attach the most recent probe response (if any) to this observation so a
+      // response_status/json_has assertion can evaluate it, then consume it.
+      if (lastProbe) {
+        observation.response = lastProbe;
+        lastProbe = undefined;
+      }
       lastObservation = structuredClone(observation);
       return observation;
     },
@@ -309,6 +344,26 @@ export async function openDiscoveryBrowser({ origin, actors, signal, run, result
         if (!who) throw new Error('Unknown actor.');
         replayTrail.push({ action: 'switch_actor', actor: who.id });
         await start(who);
+        return;
+      }
+      if (action.action === 'probe') {
+        // A read-only GET to a loopback-relative path as the current actor, using
+        // the authenticated page's request context (shares cookies and the
+        // loopback origin; never leaves the permitted application). GET only — a
+        // probe never mutates. Body is parsed as JSON when possible, size-bounded
+        // and redacted; a non-JSON or oversized body leaves json undefined.
+        const target = String(action.target ?? '');
+        if (!/^\/[\w./?=&%-]{0,400}$/.test(target))
+          throw new Error('Probe target must be a loopback-relative path beginning with "/".');
+        const url = new URL(target, origin);
+        if (url.origin !== permitted.origin) throw new Error('Probe target is outside the permitted application.');
+        resetErrors();
+        const spec = { action: 'probe', url: url.href };
+        trail.push(spec);
+        replayTrail.push(spec);
+        await perform(page, spec).catch(error => {
+          throw new Error(`Probe request failed: ${clean(error.message).slice(0, 300)}`);
+        });
         return;
       }
       let spec = { action: action.action, value: action.value };

@@ -4,20 +4,23 @@ permissions:
   contents: read
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, dad, linux]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        # No cache: npm — ~/.npm persists on the self-hosted runner and the
+        # cache-save post-step can hang and blow the job timeout.
         with:
           node-version: '24'
-          cache: npm
       - run: npm ci
       - run: npm audit --audit-level=high
       - run: npm run check
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
-      - run: npx playwright install --with-deps chromium
+      # No --with-deps: it runs apt-get (Linux only) and the self-hosted macOS
+      # host already has Chromium's shared libraries via the browser download.
+      - run: npx playwright install chromium
       - run: npm run test:browser
       - run: npm run test:fixture

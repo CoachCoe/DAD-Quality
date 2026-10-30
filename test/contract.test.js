@@ -339,3 +339,112 @@ test('repeated attempts to replace an unfinished plan also stop without discardi
   assert.equal(report.investigations.length, 1);
   assert.equal(report.investigations[0].conclusion, undefined);
 });
+
+// Phase 5a: accessibility is a first-class discovery expectation.
+test('a11y_clean passes with no violations, fails with violations, and is inconclusive without an audit', () => {
+  const check = action('assert', { expectation: 'a11y_clean' });
+  // No violations captured -> passes.
+  assert.equal(evaluateExpectation(check, observation({ a11y: [] })).passed, true);
+  // Violations captured -> fails, with the count as actual evidence.
+  const failed = evaluateExpectation(
+    check,
+    observation({ a11y: [{ rule: 'color-contrast', impact: 'serious', help: 'x', targets: ['.btn'] }] }),
+  );
+  assert.equal(failed.evaluable, true);
+  assert.equal(failed.passed, false);
+  assert.equal(failed.actual, 1);
+  // Audit did not run (a11y undefined) -> inconclusive, never a failure.
+  assert.equal(evaluateExpectation(check, observation()).evaluable, false);
+});
+
+test('a contract may declare an a11y_clean assertion with empty target/value/text/baseline', () => {
+  const checks = [
+    requiredAction('reload'),
+    requiredAssertion('a11y', { expectation: 'a11y_clean', target: '', value: '', text: '', baseline: '' }),
+  ];
+  assert.doesNotThrow(() => validateContract(checks));
+});
+
+// Phase 5b: API-level probing — response_status and json_has over a probe response.
+test('response_status evaluates the captured probe status', () => {
+  const check = action('assert', { expectation: 'response_status', text: '200' });
+  assert.equal(evaluateExpectation(check, observation({ response: { status: 200 } })).passed, true);
+  assert.equal(evaluateExpectation(check, observation({ response: { status: 404 } })).passed, false);
+  // No probe response captured -> inconclusive, never a failure.
+  assert.equal(evaluateExpectation(check, observation()).evaluable, false);
+});
+
+test('json_has checks a dotted key path and optional expected value', () => {
+  const body = { response: { status: 200, json: { data: { id: 'abc', nested: { n: 1 } } } } };
+  // Presence only (empty text).
+  assert.equal(
+    evaluateExpectation(action('assert', { expectation: 'json_has', target: 'data.id' }), observation(body)).passed,
+    true,
+  );
+  // Expected value match.
+  assert.equal(
+    evaluateExpectation(
+      action('assert', { expectation: 'json_has', target: 'data.id', text: 'abc' }),
+      observation(body),
+    ).passed,
+    true,
+  );
+  assert.equal(
+    evaluateExpectation(
+      action('assert', { expectation: 'json_has', target: 'data.id', text: 'wrong' }),
+      observation(body),
+    ).passed,
+    false,
+  );
+  // Missing key -> fails (absent), still evaluable.
+  const missing = evaluateExpectation(
+    action('assert', { expectation: 'json_has', target: 'data.missing' }),
+    observation(body),
+  );
+  assert.equal(missing.evaluable, true);
+  assert.equal(missing.passed, false);
+  // Non-JSON body -> inconclusive.
+  assert.equal(
+    evaluateExpectation(
+      action('assert', { expectation: 'json_has', target: 'data' }),
+      observation({ response: { status: 200 } }),
+    ).evaluable,
+    false,
+  );
+});
+
+test('a contract may declare a probe action followed by response_status / json_has', () => {
+  const checks = [
+    { id: 'hit', kind: 'action', action: 'probe', actor: 'a', target: '/api/health', value: '' },
+    requiredAssertion('status', { expectation: 'response_status', target: '', value: '', text: '200', baseline: '' }),
+    requiredAssertion('shape', { expectation: 'json_has', target: 'status', value: '', text: 'ok', baseline: '' }),
+  ];
+  assert.doesNotThrow(() => validateContract(checks));
+});
+
+test('probe requires a target path; response_status requires a status code; json_has requires a key', () => {
+  assert.throws(
+    () =>
+      validateContract([
+        { id: 'p', kind: 'action', action: 'probe', actor: 'a', target: '', value: '' },
+        requiredAssertion('s', { expectation: 'response_status', target: '', value: '', text: '200', baseline: '' }),
+      ]),
+    /observed label, path or actor/,
+  );
+  assert.throws(
+    () =>
+      validateContract([
+        requiredAction('reload'),
+        requiredAssertion('s', { expectation: 'response_status', target: '', value: '', text: 'nope', baseline: '' }),
+      ]),
+    /response_status needs an expected HTTP status/,
+  );
+  assert.throws(
+    () =>
+      validateContract([
+        requiredAction('reload'),
+        requiredAssertion('j', { expectation: 'json_has', target: '', value: '', text: '', baseline: '' }),
+      ]),
+    /json_has needs a target JSON key/,
+  );
+});

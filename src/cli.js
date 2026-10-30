@@ -2,23 +2,32 @@
 import { parseArgs } from 'node:util';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { evaluate, redact, verifyEvidence } from './core.js';
 import { executeRun } from './runner.js';
 import { executeDiscovery } from './discovery-runner.js';
 import { assessRelease } from './release.js';
 import { resolveTarget } from './targets/index.js';
+import { detectConfig } from './detect.js';
 
 const help = `ATM — local application quality runner
 
-  npm run atm -- run --repo /path/to/DAD-Main [--revision HEAD] [--ai --model MODEL]
-  npm run atm -- explore --repo /path/to/DAD-Main --model MODEL
+  npm run atm -- run --repo /path/to/repo [--revision HEAD] [--ai --model MODEL]
+  npm run atm -- explore --repo /path/to/repo --target generic-web --model MODEL
+  npm run atm -- detect --repo /path/to/repo [--config FILE] [--force] [--print]
   npm run atm -- inspect /path/to/run/run.json
-  npm start -- --repo /path/to/DAD-Main
+  npm start -- --repo /path/to/repo --target generic-web
 
 Options:
+  --target NAME     Discovery/validation target (default dad):
+                      dad          DAD-Main validation + discovery (built-in knowledge)
+                      generic-web  any web app via a repo-supplied atm.config.json (explore only)
+                      benchmark    in-process sample app (explore only; no --repo)
+  --repo PATH       Path to the target repository (required except --target benchmark)
   --output DIR      Evidence root (default .atm/runs)
-  --target NAME     Discovery target: dad (default) or benchmark (explore only; in-process, no --repo)
+  --config FILE     Repo-relative atm.config.json path for --target generic-web (default atm.config.json)
+  --force           detect: overwrite an existing config file
+  --print           detect: print the generated config to stdout, write nothing
   --policy FILE     Versioned local acceptance policy (default policies/impactgraph-local.json)
   --ai              Add advisory AI exploration; requires provider key and --model/ATM_MODEL
   --provider NAME   openai (default) or tinker; also ATM_PROVIDER
@@ -50,6 +59,9 @@ export async function main(args = process.argv.slice(2)) {
       provider: { type: 'string' },
       'max-requests': { type: 'string' },
       target: { type: 'string', default: 'dad' },
+      config: { type: 'string' },
+      force: { type: 'boolean', default: false },
+      print: { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
     },
   });
@@ -87,20 +99,46 @@ export async function main(args = process.argv.slice(2)) {
         ? explorationExit(decision)
         : exitCode(decision, release);
   }
+  if (positionals[0] === 'detect' && positionals.length === 1) {
+    if (!values.repo)
+      throw new Error('Use: npm run atm -- detect --repo /path/to/repo [--config FILE] [--force] [--print]');
+    const config = await detectConfig(values.repo);
+    const json = `${JSON.stringify(config, null, 2)}\n`;
+    if (values.print) {
+      console.log(json.trimEnd());
+      return 0;
+    }
+    const target = path.resolve(values.repo, values.config ?? 'atm.config.json');
+    try {
+      await writeFile(target, json, { flag: values.force ? 'w' : 'wx', mode: 0o600 });
+    } catch (error) {
+      if (error.code === 'EEXIST')
+        throw new Error(`${target} already exists; pass --force to overwrite or --print to preview.`);
+      throw error;
+    }
+    console.log(
+      `Wrote ${target}\nReview it, add authenticated actors + an optional seed command, then:\n  npm run atm -- explore --repo ${values.repo} --target generic-web`,
+    );
+    return 0;
+  }
   if (!['run', 'explore'].includes(positionals[0]) || positionals.length !== 1)
-    throw new Error('Use: npm run atm -- run|explore --repo /path/to/DAD-Main');
+    throw new Error('Use: npm run atm -- run|explore --repo /path/to/repo [--target NAME]');
   const discovery = positionals[0] === 'explore';
   // Validate the target early so an unknown name errors before provisioning.
   resolveTarget(values.target);
   if (!discovery && values.target !== 'dad')
-    throw new Error('run targets DAD only; use explore --target for alternative discovery targets.');
-  // Non-dad targets (e.g. benchmark) provision in-process and need no --repo;
-  // run and explore --target dad still require a source repository.
-  if (!values.repo && values.target === 'dad')
-    throw new Error('Use: npm run atm -- run|explore --repo /path/to/DAD-Main');
+    throw new Error(
+      'run (release validation) is available only for --target dad, which ships the acceptance policy; use explore --target for other codebases.',
+    );
+  // Only the in-process benchmark target provisions without a repository; dad and
+  // generic-web explore a committed source checkout and require --repo.
+  if (!values.repo && values.target !== 'benchmark')
+    throw new Error('Use: npm run atm -- run|explore --repo /path/to/repo (only --target benchmark needs no repo).');
   if (discovery && (values.ai || values['require-ai'] || values.policy))
     throw new Error('Explore uses its own discovery contract; omit --ai, --require-ai and --policy.');
   if (!discovery && values['max-requests'] !== undefined) throw new Error('--max-requests applies only to explore.');
+  if (values.config !== undefined && values.target !== 'generic-web')
+    throw new Error('--config applies only to --target generic-web.');
   const ai = values.ai || values['require-ai'];
   const model = values.model ?? process.env.ATM_MODEL;
   const controller = new AbortController();
@@ -125,6 +163,7 @@ export async function main(args = process.argv.slice(2)) {
       providerName: values.provider,
       maxRequests: values['max-requests'] === undefined ? undefined : Number(values['max-requests']),
       target: values.target,
+      ...(discovery ? { configFile: values.config } : {}),
       signal: controller.signal,
     });
   } finally {
