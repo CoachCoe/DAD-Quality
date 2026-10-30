@@ -233,7 +233,7 @@ test('performance view compares candidates, remains accessible on mobile and rej
         capped: false,
         ...metrics(Array(120).fill(sample), p.durationMs),
         endpoints: Object.fromEntries(
-          ['content', 'dashboard', 'gifts'].map(name => [name, metrics(Array(40).fill(sample), p.durationMs)]),
+          ['spend', 'dashboard', 'gifts'].map(name => [name, metrics(Array(40).fill(sample), p.durationMs)]),
         ),
       })),
     };
