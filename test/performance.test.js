@@ -17,7 +17,7 @@ import { collectFindings } from '../src/history.js';
 import { Run } from '../src/core.js';
 import { evaluateRelease } from '../src/release.js';
 
-const body = JSON.stringify({ initiatives: [], state: 'ready', gifts: [] });
+const body = JSON.stringify({ categories: [], total_minor: 0, state: 'ready', gifts: [] });
 const cookies = ['dad_donor_session=synthetic'];
 const profile = () => ({
   ...structuredClone(defaultPerformanceProfile),

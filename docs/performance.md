@@ -13,7 +13,7 @@ are setup fixtures, not real payments or evidence of checkout correctness. The
 functional authentication fixtures remain separate. Workers and external services
 remain disabled.
 
-Traffic uses an equal, deterministic mix of public content, authenticated donor
+Traffic uses an equal, deterministic mix of public spend-by-category totals, authenticated donor
 dashboards and authenticated first-page giving history. Donors rotate across the
 requests. GETs pass through loopback ingress and the production web/API images.
 The runner checks HTTP 200, JSON shape and full response completion. It does not

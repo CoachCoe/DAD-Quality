@@ -8,7 +8,7 @@ import { hashPolicy } from './policy.js';
 import { validatePerformanceProfile } from './performance-config.js';
 
 const targets = [
-  { name: 'content', path: '/api/donor/public/content', signedIn: false },
+  { name: 'spend', path: '/api/donor/public/spend', signedIn: false },
   { name: 'dashboard', path: '/api/donor/me/dashboard', signedIn: true },
   { name: 'gifts', path: '/api/donor/me/gifts?offset=0', signedIn: true },
 ];
@@ -89,8 +89,8 @@ function request(origin, target, cookie, agent, timeoutMs, signal) {
             valid =
               body !== null &&
               typeof body === 'object' &&
-              (target.name === 'content'
-                ? Array.isArray(body.initiatives)
+              (target.name === 'spend'
+                ? Array.isArray(body.categories)
                 : target.name === 'gifts'
                   ? Array.isArray(body.gifts)
                   : typeof body.state === 'string');
@@ -301,7 +301,11 @@ export async function readPerformance(directory, run) {
       !Number.isFinite(phase.elapsedMs) ||
       phase.elapsedMs <= 0 ||
       !phase.endpoints ||
-      Object.keys(phase.endpoints).sort().join() !== 'content,dashboard,gifts'
+      Object.keys(phase.endpoints).sort().join() !==
+        targets
+          .map(target => target.name)
+          .sort()
+          .join()
     )
       throw new Error('Invalid performance phase.');
     for (const m of [phase, ...Object.values(phase.endpoints)]) {
