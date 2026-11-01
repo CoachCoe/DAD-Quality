@@ -27,6 +27,12 @@ but **unused imports and useless `continue` must be hand-fixed**.
 - Run `git commit` and `git push` as two separate commands (a long message can trip the
   push-target safety scan when chained).
 
+## Code comments
+
+- Comments explain **why** (a constraint, a trade-off, a non-obvious behavior), not what the
+  code already says.
+- No commented-out code (git keeps history). A `TODO` names a tracked issue.
+
 ## Gotchas not written in the docs
 
 - **Do not break the DAD policy digest.** The `dad` target's acceptance policy is the
