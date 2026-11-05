@@ -6,7 +6,7 @@ staging or production, exercise live integrations, run the optional AI provider,
 or replace existing CI, security, performance or deployment requirements.
 
 The DAD-Main installation uses the durable Worker ledger described in
-[its operations guide](https://github.com/CoachCoe/DAD-Main/blob/dev/docs/atm-ledger.md).
+[its operations guide](https://github.com/pre-dad/DAD-Main/blob/dev/docs/atm-ledger.md).
 That guide and DAD-Main's checked-in workflow are authoritative for that installation.
 The Git-backed workflow template below remains supported for other installations;
 do not use its initialization or publication steps to replace DAD-Main's ledger.

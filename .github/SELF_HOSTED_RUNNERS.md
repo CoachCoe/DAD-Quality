@@ -21,7 +21,7 @@ a macOS host and has been removed — do not re-add it.) Register from this repo
 **Settings → Actions → Runners → New self-hosted runner** page:
 
 ```sh
-./config.sh --url https://github.com/CoachCoe/DAD-Quality \
+./config.sh --url https://github.com/pre-dad/DAD-Quality \
   --token <TOKEN_FROM_THE_RUNNERS_PAGE> \
   --labels dad --name dad-atm-1
 ./svc.sh install && ./svc.sh start
