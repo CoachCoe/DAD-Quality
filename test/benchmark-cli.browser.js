@@ -33,7 +33,8 @@ for (const failure of [false, true])
         '--output',
         path.join(root, 'reports'),
       ],
-      { timeout: 60_000, env: { ATM_PROVIDER: 'tinker', TINKER_API_KEY: 'test-only', ATM_MODEL: 'test-model' } },
+      // Live 5-case benchmark runs ~56-60s locally; 120s gives headroom under CI load so it is not killed mid-run.
+      { timeout: 120_000, env: { ATM_PROVIDER: 'tinker', TINKER_API_KEY: 'test-only', ATM_MODEL: 'test-model' } },
     );
     const summaryPath = result.stdout.match(/Benchmark report: (.+)/)?.[1];
     assert.ok(summaryPath, result.stdout);
