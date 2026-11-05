@@ -27,6 +27,7 @@
 import path from 'node:path';
 import { lstat, readFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import { collectFindings, readRun } from '../src/history.js';
 
 // collectFindings already applies the reopen rule (a closed finding whose
@@ -259,7 +260,10 @@ async function main() {
 }
 
 // Only run as a CLI; importing the module (tests) must have no side effects.
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Resolve argv[1] through pathToFileURL so the comparison holds for paths with
+// spaces or other characters that a bare `file://` prefix would not encode,
+// matching the entrypoint guard in src/cli.js.
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   main().catch(error => {
     console.error(error.message);
     process.exitCode = 2;
