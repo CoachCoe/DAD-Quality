@@ -14,7 +14,7 @@ import {
   isDryRun,
 } from '../scripts/aws-sync-run.js';
 
-const REPO = 'CoachCoe/DAD-Main';
+const REPO = 'pre-dad/DAD-Main';
 const SOURCE = `github:${REPO}`;
 const SHA = 'a'.repeat(40);
 const BUCKET = 'atm-evidence-staging-853377042897';

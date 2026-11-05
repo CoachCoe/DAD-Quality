@@ -41,7 +41,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          repository: CoachCoe/DAD-Quality
+          repository: pre-dad/DAD-Quality
           ref: ATM_COMMIT_SHA
           path: atm
           persist-credentials: false
@@ -97,7 +97,7 @@ jobs:
       # This fresh runner never builds or executes candidate code.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          repository: CoachCoe/DAD-Quality
+          repository: pre-dad/DAD-Quality
           ref: ATM_COMMIT_SHA
           path: atm
           persist-credentials: false
