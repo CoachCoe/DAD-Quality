@@ -56,7 +56,7 @@ s3://<ATM_EVIDENCE_BUCKET>/<repo>/<revision>/<run-id>/evidence/<file>
 ```
 
 - `<repo>` is `run.candidate.source` with the `github:` prefix stripped
-  (e.g. `CoachCoe/DAD-Main`).
+  (e.g. `pre-dad/DAD-Main`).
 - `<revision>` is the full 40-hex SHA.
 - `<run-id>` matches ATM's run id, `atm-<14 digits>-<8 hex>`.
 

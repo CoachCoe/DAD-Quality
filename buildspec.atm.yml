@@ -40,7 +40,7 @@ phases:
       # Clone DAD-Main at the pinned SHA using the injected short-lived token.
       # ATM re-resolves and archives only committed source from this checkout.
       - rm -rf dad-main-src
-      - git clone "https://x-access-token:${GITHUB_APP_TOKEN}@github.com/CoachCoe/DAD-Main.git" dad-main-src
+      - git clone "https://x-access-token:${GITHUB_APP_TOKEN}@github.com/pre-dad/DAD-Main.git" dad-main-src
       - git -C dad-main-src checkout "$SOURCE_SHA"
 
   build:
